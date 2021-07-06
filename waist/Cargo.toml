@@ -1,0 +1,12 @@
+[package]
+name = "sndjvu_waist"
+version = "0.1.0"
+
+authors = ["Cole Miller <m@cole-miller.net>"]
+description = "TODO"
+edition = "2018"
+homepage = "https://www.sndjvu.org"
+keywords = ["djvu", "sndjvu"]
+license = "GPL-2.0-or-later"
+repository = "https://github.com/sndjvu/workspace"
+resolver = "2"

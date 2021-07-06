@@ -1,0 +1,21 @@
+[package]
+name = "sndjvu_codec"
+version = "0.1.0"
+
+authors = ["Cole Miller <m@cole-miller.net>"]
+categories = ["compression"]
+description = "encoding and decoding library for the SnDjVu suite"
+edition = "2018"
+homepage = "https://www.sndjvu.org"
+keywords = ["djvu", "sndjvu", "arithmetic-coding"]
+license = "GPL-2.0-or-later"
+repository = "https://github.com/sndjvu/workspace"
+resolver = "2"
+
+[features]
+default = ["djvu"]
+djvu = ["bzz"]
+bzz = []
+
+[dependencies]
+sndjvu_waist = { version = "^0.1.0", path = "../waist" }

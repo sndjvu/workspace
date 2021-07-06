@@ -1,0 +1,35 @@
+[package]
+name = "sndjvu_format"
+version = "0.1.0"
+
+authors = ["Cole Miller <m@cole-miller.net>"]
+categories = ["parser-implementations"]
+description = "TODO"
+edition = "2018"
+homepage = "https://www.sndjvu.org"
+keywords = ["djvu", "sndjvu"]
+license = "GPL-2.0-or-later"
+repository = "https://github.com/sndjvu/workspace"
+resolver = "2"
+
+[features]
+default = []
+impl-fallible-iterator = ["fallible-iterator"]
+
+[dependencies.sndjvu_waist]
+version = "^0.1.0"
+path = "../waist"
+
+[dependencies.bstr]
+version = "^0.2.16"
+default-features = false
+features = ["std"]
+
+[dependencies.fallible-iterator]
+version = "^0.2.0"
+default-features = false
+optional = true
+
+[dependencies.rgb]
+version = "^0.8.27"
+default-features = false

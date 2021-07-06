@@ -1,0 +1,28 @@
+This repository contains the Rust code for SnDjVu, a family of libraries and
+tools for working with digital documents in the DjVu format.
+
+For a demonstration, try this:
+
+	$ cargo run --release --features tools --bin sndjvu-tree -- <some_document.djvu
+
+The sndjvu-tree tool (implemented in `tools/tree.rs`) is a rough clone of
+DjVuLibre's djvudump. Currently it just reads from stdin and ignores any
+command-line arguments.
+
+The following library crates are developed here:
+
+- sndjvu_format: provides a complete incremental parser for DjVu version 3
+  (support for earlier versions is planned)
+- sndjvu_codec: implements the compression algorithms used by DjVu: BZZ, JB2
+  (planned), and IW44 (planned)
+- sndjvu_waist: a small library defining the interface between sndjvu_format and
+  sndjvu_codec; you probably don't need to use this directly
+- sndjvu: re-exports the other libraries and provides some higher-level
+  constructs
+
+SnDjVu targets recent stable Rust.
+
+The code in this repository is made available under the terms of the GNU General
+Public License, version 2.0 or later (see the LICENSE file). This is the same
+license as DjVuLibre, the reference implementation of DjVu, but SnDjVu is not
+derived from DjVuLibre and shares no code with that project.

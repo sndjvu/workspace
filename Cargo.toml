@@ -1,0 +1,30 @@
+[workspace]
+members = ["./waist", "./format", "./codec", "."]
+
+[package]
+name = "sndjvu"
+version = "0.1.0"
+
+authors = ["Cole Miller <m@cole-miller.net>"]
+description = "TODO"
+edition = "2018"
+homepage = "https://www.sndjvu.org"
+keywords = ["djvu", "sndjvu"]
+license = "GPL-2.0-or-later"
+repository = "https://github.com/sndjvu/workspace"
+resolver = "2"
+
+[features]
+default = []
+tools = ["bstr"]
+
+[dependencies]
+sndjvu_codec = { version = "^0.1.0", path = "./codec" }
+sndjvu_format = { version = "^0.1.0", path = "./format" }
+
+bstr = { version = "^0.2.16", optional = true }
+
+[[bin]]
+name = "sndjvu-tree"
+path = "tools/tree.rs"
+required-features = ["tools"]
