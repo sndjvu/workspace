@@ -32,12 +32,12 @@ impl FgbzVersion {
     pub const CURRENT: Self = Self(0);
 }
 
-pub struct PageVersion {
+pub struct InfoVersion {
     pub major: u8,
     pub minor: u8,
 }
 
-impl PageVersion {
+impl InfoVersion {
     pub const CURRENT: Self = Self { major: 0, minor: 26 };
 }
 
@@ -48,9 +48,9 @@ pub enum PageRotation {
     Cw = 5,
 }
 
-pub struct MultiPageVersion(u8);
+pub struct DirmVersion(u8);
 
-impl MultiPageVersion {
+impl DirmVersion {
     pub const CURRENT: Self = Self(1);
 }
 

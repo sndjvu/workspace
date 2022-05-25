@@ -96,7 +96,7 @@ pub struct Info<'a> {
     content: Field<'a>,
     pub width: u16,
     pub height: u16,
-    pub version: crate::PageVersion,
+    pub version: crate::InfoVersion,
     pub dpi: u16,
     pub gamma: u8,
     pub rotation: crate::PageRotation,
@@ -123,7 +123,7 @@ impl<'a> Info<'a> {
                 content,
                 width,
                 height,
-                version: crate::PageVersion { major, minor },
+                version: crate::InfoVersion { major, minor },
                 dpi,
                 gamma,
                 rotation,
@@ -186,7 +186,7 @@ pub struct Incl<'a> {
 
 pub struct Dirm<'a> {
     content: Field<'a>,
-    pub version: crate::MultiPageVersion,
+    pub version: crate::DirmVersion,
     pub bundled: Option<Bundled<'a>>,
     bzz: Field<'a>,
 }
