@@ -187,6 +187,7 @@ pub struct Incl<'a> {
 pub struct Dirm<'a> {
     content: Field<'a>,
     pub version: crate::DirmVersion,
+    pub num_components: u16,
     pub bundled: Option<Bundled<'a>>,
     bzz: Field<'a>,
 }
