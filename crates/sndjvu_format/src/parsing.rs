@@ -28,6 +28,7 @@ fn advanced<T, D>(head: T, s: &Split<'_>) -> Progress<T, D> {
     Progress::Advanced { head, by: s.by as usize }
 }
 
+// workaround for unstable ? overloading (Try trait)
 macro_rules! try_advance {
     ( $x:expr ) => {
         match $x {
@@ -58,14 +59,14 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
             let kind = try_advance!(peek_chunk(s)?);
             let navm = if &kind == b"NAVM" {
                 let content = try_advance!(specific_chunk(s, b"NAVM")?);
-                Some(Navm::parse(content))
+                Some(Navm { content })
             } else {
                 None
             };
             DocumentHead::MultiPage { dirm, navm }
 
         }
-        _ => todo!(), // return Err(...)
+        _ => return Err(Error {}),
     };
     Ok(advanced(head, s))
 }
@@ -128,8 +129,8 @@ impl<'a> Info<'a> {
                 gamma,
                 rotation,
             })
-        })();
-        info.ok_or_else(|| todo!())
+        })().ok_or(Error {})?;
+        Ok(info)
     }
 }
 
@@ -140,7 +141,7 @@ fn is_potential_chunk_id(xs: [u8; 4]) -> bool {
 fn get_info_chunk<'a>(s: &mut Split<'a>) -> Result<Progress<Info<'a>>, Error> {
     let (kind, len) = try_advance!(chunk_header(s)?);
     if &kind != b"INFO" {
-        todo!() // return Err(...)
+        return Err(Error {});
     }
     let content = try_advance!(chunk_content(s, len));
     let info = Info::parse(content)?;
@@ -383,7 +384,7 @@ fn chunk_header(s: &mut Split<'_>) -> Result<Progress<([u8; 4], u32)>, Error> {
         Some((kind, len)) => (kind, len),
     };
     if !is_potential_chunk_id(kind) {
-        todo!() // return Err(...)
+        return Err(Error {});
     }
     Ok(Progress::Advanced {
         head: (kind, len),
