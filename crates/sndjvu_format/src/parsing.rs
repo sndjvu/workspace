@@ -195,17 +195,50 @@ pub struct Dirm<'a> {
 
 impl<'a> Dirm<'a> {
     fn parse(content: Field<'a>) -> Result<Self, Error> {
-        todo!()
+        let mut s = content.split();
+        let dirm = (|| {
+            let flags = s.byte()?;
+            let is_bundled = flags & (1 << 7) != 0;
+            let version = crate::DirmVersion(flags & !(1 << 7));
+            let num_components = s.u16_be()?;
+            let bundled = if is_bundled {
+                let arrays = s.slice_of_arrays(num_components as usize)?;
+                let offsets = ComponentOffset::cast_slice(arrays);
+                Some(Bundled { offsets })
+            } else {
+                None
+            };
+            let bzz = s.rest();
+            Some(Dirm {
+                content,
+                version,
+                num_components,
+                bundled,
+                bzz,
+            })
+        })().ok_or(Error {})?;
+        Ok(dirm)
     }
 }
 
 pub struct Bundled<'a> {
-    content: Field<'a>,
     offsets: &'a [ComponentOffset],
 }
 
 #[repr(transparent)]
 struct ComponentOffset([u8; 4]);
+
+impl ComponentOffset {
+    fn cast_slice(arrays: &[[u8; 4]]) -> &[Self] {
+        // SAFETY ComponentOffset is repr(transparent)
+        unsafe {
+            core::slice::from_raw_parts(
+                arrays.as_ptr().cast(),
+                arrays.len(),
+            )
+        }
+    }
+}
 
 impl<'a> Bundled<'a> {
     pub fn get(&self, i: usize) -> Option<ComponentP> {
@@ -246,16 +279,14 @@ pub struct Navm<'a> {
     content: Field<'a>,
 }
 
-impl<'a> Navm<'a> {
-    fn parse(content: Field<'a>) -> Self {
-        todo!()
-    }
-}
-
 pub struct ComponentP {
 }
 
 impl ComponentP {
+    pub fn offset(&self) -> u32 {
+        todo!()
+    }
+
     pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<ComponentHead<'a>, ()>, Error> {
         todo!()
     }
@@ -343,10 +374,24 @@ impl<'a> Split<'a> {
         todo!()
     }
 
+    fn rest(self) -> Field<'a> {
+        todo!()
+    }
+
     fn byte_array<const N: usize>(&mut self) -> Option<&'a [u8; N]> {
         if let Some((arr, _)) = crate::shim::split_array(self.remaining()) {
             self.by += N as u32; // ugh
             Some(arr)
+        } else {
+            None
+        }
+    }
+
+    fn slice_of_arrays<const N: usize>(&mut self, n: usize) -> Option<&'a [[u8; N]]> {
+        let (all, _) = crate::shim::as_arrays(self.remaining());
+        if let Some(arrays) = all.get(..n) {
+            self.by += n as u32 * N as u32; // UGH
+            Some(arrays)
         } else {
             None
         }
