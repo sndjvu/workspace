@@ -24,7 +24,7 @@ pub enum Progress<T, D = Void> {
 /// This will become an alias for the never type `!` once that's stabilized.
 pub enum Void {}
 
-fn advanced<T, D>(head: T, s: &Split<'_>) -> Progress<T, D> {
+fn advanced<T, D>(head: T, s: &SplitOuter<'_>) -> Progress<T, D> {
     Progress::Advanced { head, by: s.by as usize }
 }
 
@@ -43,22 +43,23 @@ pub struct Error {
 }
 
 pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
-    let field = Field::new(data, 0);
-    let mut s = field.split();
+    let mut s = split_outer(data, 0, None);
     let s = &mut s;
-    let (kind, len) = try_advance!(magic_form_header(s)?);
+    let (kind, len) = try_advance!(s.magic_form_header()?);
+    s.set_distance_to_end(len);
     let head = match &kind {
         b"DJVU" => {
-            let info = try_advance!(get_info_chunk(s)?);
-            let elements = ElementP::mark(s, len);
+            let info_content = try_advance!(s.specific_chunk(b"INFO")?);
+            let info = Info::parse(info_content)?;
+            let elements = ElementP::mark_after(s, len);
             DocumentHead::SinglePage { info, elements }
         }
         b"DJVM" => {
-            let content = try_advance!(specific_chunk(s, b"DIRM")?);
-            let dirm = Dirm::parse(content)?;
-            let kind = try_advance!(peek_chunk(s)?);
+            let dirm_content = try_advance!(s.specific_chunk(b"DIRM")?);
+            let dirm = Dirm::parse(dirm_content)?;
+            let kind = try_advance!(s.peek_chunk()?);
             let navm = if &kind == b"NAVM" {
-                let content = try_advance!(specific_chunk(s, b"NAVM")?);
+                let content = try_advance!(s.specific_chunk(b"NAVM")?);
                 Some(Navm { content })
             } else {
                 None
@@ -106,46 +107,33 @@ pub struct Info<'a> {
 impl<'a> Info<'a> {
     fn parse(content: Field<'a>) -> Result<Self, Error> {
         let mut s = content.split();
-        let info = (|| {
-            let width = s.u16_be()?;
-            let height = s.u16_be()?;
-            let &[minor, major] = s.byte_array()?;
-            let dpi = s.u16_le()?;
-            let gamma = s.byte()?;
-            let flags = s.byte()?;
-            let rotation = match flags & 0b111 {
-                1 => crate::PageRotation::Up,
-                6 => crate::PageRotation::Ccw,
-                2 => crate::PageRotation::Down,
-                5 => crate::PageRotation::Cw,
-                _ => crate::PageRotation::Up, // see djvuchanges.txt
-            };
-            Some(Self {
-                content,
-                width,
-                height,
-                version: crate::InfoVersion { major, minor },
-                dpi,
-                gamma,
-                rotation,
-            })
-        })().ok_or(Error {})?;
-        Ok(info)
+        let width = s.u16_be()?;
+        let height = s.u16_be()?;
+        let &[minor, major] = s.array()?;
+        let dpi = s.u16_le()?;
+        let gamma = s.byte()?;
+        let flags = s.byte()?;
+        let rotation = match flags & 0b111 {
+            1 => crate::PageRotation::Up,
+            6 => crate::PageRotation::Ccw,
+            2 => crate::PageRotation::Down,
+            5 => crate::PageRotation::Cw,
+            _ => crate::PageRotation::Up, // see djvuchanges.txt
+        };
+        Ok(Self {
+            content,
+            width,
+            height,
+            version: crate::InfoVersion { major, minor },
+            dpi,
+            gamma,
+            rotation,
+        })
     }
 }
 
 fn is_potential_chunk_id(xs: [u8; 4]) -> bool {
     xs.iter().all(u8::is_ascii_alphanumeric)
-}
-
-fn get_info_chunk<'a>(s: &mut Split<'a>) -> Result<Progress<Info<'a>>, Error> {
-    let (kind, len) = try_advance!(chunk_header(s)?);
-    if &kind != b"INFO" {
-        return Err(Error {});
-    }
-    let content = try_advance!(chunk_content(s, len));
-    let info = Info::parse(content)?;
-    Ok(advanced(info, s))
 }
 
 /// "Pointer" to an [`Element`] within a document.
@@ -155,11 +143,9 @@ pub struct ElementP {
 }
 
 impl ElementP {
-    fn mark(s: &Split<'_>, len: u32) -> Self {
-        Self {
-            pos: s.pos(),
-            end_pos: s.pos() + len,
-        }
+    fn mark_after(s: &SplitOuter<'_>, len: u32) -> Self {
+        // make sure to take care of padding
+        todo!()
     }
 
     pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<Element<'a>, ()>, Error> {
@@ -196,28 +182,25 @@ pub struct Dirm<'a> {
 impl<'a> Dirm<'a> {
     fn parse(content: Field<'a>) -> Result<Self, Error> {
         let mut s = content.split();
-        let dirm = (|| {
-            let flags = s.byte()?;
-            let is_bundled = flags & (1 << 7) != 0;
-            let version = crate::DirmVersion(flags & !(1 << 7));
-            let num_components = s.u16_be()?;
-            let bundled = if is_bundled {
-                let arrays = s.slice_of_arrays(num_components as usize)?;
-                let offsets = ComponentOffset::cast_slice(arrays);
-                Some(Bundled { offsets })
-            } else {
-                None
-            };
-            let bzz = s.rest();
-            Some(Dirm {
-                content,
-                version,
-                num_components,
-                bundled,
-                bzz,
-            })
-        })().ok_or(Error {})?;
-        Ok(dirm)
+        let flags = s.byte()?;
+        let is_bundled = flags >> 7 != 0;
+        let version = crate::DirmVersion(flags & 0b0111_1111);
+        let num_components = s.u16_be()?;
+        let bundled = if is_bundled {
+            let arrays = s.slice_of_arrays(num_components as usize)?;
+            let offsets = ComponentOffset::cast_slice(arrays);
+            Some(Bundled { offsets })
+        } else {
+            None
+        };
+        let bzz = s.rest();
+        Ok(Dirm {
+            content,
+            version,
+            num_components,
+            bundled,
+            bzz,
+        })
     }
 }
 
@@ -330,6 +313,40 @@ impl<'a> Thumbnail<'a> {
 
 type Pos = u32;
 
+fn split_outer(full: &[u8], start_pos: Pos, end_pos: Option<Pos>) -> SplitOuter<'_> {
+    SplitOuter {
+        full,
+        start_pos,
+        end_pos,
+        by: 0,
+    }
+}
+
+struct SplitOuter<'a> {
+    full: &'a [u8],
+    start_pos: Pos,
+    end_pos: Option<Pos>,
+    by: u32,
+}
+
+impl<'a> SplitOuter<'a> {
+    fn set_distance_to_end(&mut self, len: u32) {
+        self.end_pos = Some(self.start_pos + self.by + len);
+    }
+
+    fn magic_form_header(&mut self) -> Result<Progress<([u8; 4], u32)>, Error> {
+        todo!()
+    }
+
+    fn specific_chunk(&mut self, kind: &[u8; 4]) -> Result<Progress<Field<'a>>, Error> {
+        todo!()
+    }
+
+    fn peek_chunk(&self) -> Result<Progress<[u8; 4]>, Error> {
+        todo!()
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Field<'a> {
     full: &'a [u8],
@@ -348,111 +365,41 @@ impl<'a> Field<'a> {
         }
     }
 
-    fn split(self) -> Split<'a> {
-        Split {
+    fn split(self) -> SplitInner<'a> {
+        SplitInner {
             parent: self,
             by: 0,
         }
     }
 }
 
-struct Split<'a> {
+struct SplitInner<'a> {
     parent: Field<'a>,
     by: u32,
 }
 
-impl<'a> Split<'a> {
-    fn pos(&self) -> Pos {
-        self.parent.start_pos + self.by
+impl<'a> SplitInner<'a> {
+    fn array<const N: usize>(&mut self) -> Result<&'a [u8; N], Error> {
+        todo!()
     }
 
-    fn remaining(&self) -> &'a [u8] {
-        &self.parent.full[self.parent.start + self.by as usize..self.parent.end]
+    fn slice_of_arrays<const N: usize>(&mut self, n: usize) -> Result<&'a [[u8; N]], Error> {
+        todo!()
     }
 
-    fn field(&mut self, len: u32) -> Option<Field<'a>> {
+    fn byte(&mut self) -> Result<u8, Error> {
+        todo!()
+    }
+
+    fn u16_be(&mut self) -> Result<u16, Error> {
+        todo!()
+    }
+
+    fn u16_le(&mut self) -> Result<u16, Error> {
         todo!()
     }
 
     fn rest(self) -> Field<'a> {
         todo!()
     }
-
-    fn byte_array<const N: usize>(&mut self) -> Option<&'a [u8; N]> {
-        if let Some((arr, _)) = crate::shim::split_array(self.remaining()) {
-            self.by += N as u32; // ugh
-            Some(arr)
-        } else {
-            None
-        }
-    }
-
-    fn slice_of_arrays<const N: usize>(&mut self, n: usize) -> Option<&'a [[u8; N]]> {
-        let (all, _) = crate::shim::as_arrays(self.remaining());
-        if let Some(arrays) = all.get(..n) {
-            self.by += n as u32 * N as u32; // UGH
-            Some(arrays)
-        } else {
-            None
-        }
-    }
-
-    fn byte(&mut self) -> Option<u8> {
-        let &[x] = self.byte_array()?;
-        Some(x)
-    }
-
-    fn u16_be(&mut self) -> Option<u16> {
-        let &xs = self.byte_array()?;
-        Some(u16::from_be_bytes(xs))
-    }
-
-    fn u16_le(&mut self) -> Option<u16> {
-        let &xs = self.byte_array()?;
-        Some(u16::from_le_bytes(xs))
-    }
-
-    fn u32_be(&mut self) -> Option<u32> {
-        let &xs = self.byte_array()?;
-        Some(u32::from_be_bytes(xs))
-    }
-}
-
-fn chunk_header(s: &mut Split<'_>) -> Result<Progress<([u8; 4], u32)>, Error> {
-    let got = (|| {
-        let &kind = s.byte_array()?;
-        let len = s.u32_be()?;
-        Some((kind, len))
-    })();
-    let (kind, len) = match got {
-        None => return Ok(Progress::None { hint: Some(8) }),
-        Some((kind, len)) => (kind, len),
-    };
-    if !is_potential_chunk_id(kind) {
-        return Err(Error {});
-    }
-    Ok(Progress::Advanced {
-        head: (kind, len),
-        by: 8,
-    })
-}
-
-fn chunk_content<'a>(s: &mut Split<'a>, len: u32) -> Progress<Field<'a>> {
-    if let Some(field) = s.field(len) {
-        advanced(field, s)
-    } else {
-        Progress::None { hint: Some(len as usize) }
-    }
-}
-
-fn magic_form_header(s: &mut Split<'_>) -> Result<Progress<([u8; 4], u32)>, Error> {
-    todo!()
-}
-
-fn specific_chunk<'a>(s: &mut Split<'a>, kind: &[u8; 4]) -> Result<Progress<Field<'a>>, Error> {
-    todo!()
-}
-
-fn peek_chunk(s: &Split<'_>) -> Result<Progress<[u8; 4]>, Error> {
-    todo!()
 }
