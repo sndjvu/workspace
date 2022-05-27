@@ -51,7 +51,7 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
         b"DJVU" => {
             let info_content = try_advance!(s.specific_chunk(b"INFO")?);
             let info = Info::parse(info_content)?;
-            let elements = ElementP::mark_after(s, len);
+            let elements = ElementP::mark_after(s);
             DocumentHead::SinglePage { info, elements }
         }
         b"DJVM" => {
@@ -73,7 +73,28 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
 }
 
 pub fn indirect_component(data: &[u8]) -> Result<Progress<ComponentHead<'_>>, Error> {
-    todo!()
+    let mut s = split_outer(data, 0, None);
+    let s = &mut s;
+    let (kind, len) = try_advance!(s.magic_form_header()?);
+    s.set_distance_to_end(len);
+    let head = match &kind {
+        b"DJVI" => { 
+            let elements = ElementP::mark(s);
+            ComponentHead::Djvi { elements }
+        }
+        b"DJVU" => {
+            let info_content = try_advance!(s.specific_chunk(b"INFO")?);
+            let info = Info::parse(info_content)?;
+            let elements = ElementP::mark_after(s);
+            ComponentHead::Djvu { info, elements }
+        }
+        b"THUM" => {
+            let thumbnails = ThumbnailP::mark(s);
+            ComponentHead::Thum { thumbnails }
+        }
+        _ => return Err(Error {}),
+    };
+    Ok(advanced(head, s))
 }
 
 /// Parsed representation of the start of a document.
@@ -143,7 +164,11 @@ pub struct ElementP {
 }
 
 impl ElementP {
-    fn mark_after(s: &SplitOuter<'_>, len: u32) -> Self {
+    fn mark(s: &SplitOuter<'_>) -> Self {
+        todo!()
+    }
+
+    fn mark_after(s: &SplitOuter<'_>) -> Self {
         // make sure to take care of padding
         todo!()
     }
@@ -292,6 +317,10 @@ pub struct ThumbnailP {
 }
 
 impl ThumbnailP {
+    fn mark(s: &SplitOuter<'_>) -> Self {
+        todo!()
+    }
+
     pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<Thumbnail<'a>, ()>, Error> {
         todo!()
     }
