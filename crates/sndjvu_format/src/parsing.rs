@@ -76,25 +76,7 @@ pub fn indirect_component(data: &[u8]) -> Result<Progress<ComponentHead<'_>>, Er
     let mut s = split_outer(data, 0, None);
     let s = &mut s;
     let (kind, len) = try_advance!(s.magic_form_header()?);
-    s.set_distance_to_end(len);
-    let head = match &kind {
-        b"DJVI" => { 
-            let elements = ElementP::mark(s);
-            ComponentHead::Djvi { elements }
-        }
-        b"DJVU" => {
-            let info_content = try_advance!(s.specific_chunk(b"INFO")?);
-            let info = Info::parse(info_content)?;
-            let elements = ElementP::mark_after(s);
-            ComponentHead::Djvu { info, elements }
-        }
-        b"THUM" => {
-            let thumbnails = ThumbnailP::mark(s);
-            ComponentHead::Thum { thumbnails }
-        }
-        _ => return Err(Error {}),
-    };
-    Ok(advanced(head, s))
+    s.component_head(kind, len)
 }
 
 /// Parsed representation of the start of a document.
@@ -288,6 +270,7 @@ pub struct Navm<'a> {
 }
 
 pub struct ComponentP {
+    pos: Pos,
 }
 
 impl ComponentP {
@@ -295,8 +278,19 @@ impl ComponentP {
         todo!()
     }
 
-    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<ComponentHead<'a>, ()>, Error> {
+    pub fn is_end(&self) -> bool {
         todo!()
+    }
+
+    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<ComponentHead<'a>, ()>, Error> {
+        if self.is_end() {
+            return Ok(Progress::End(()));
+        }
+        let mut s = split_outer(data, self.pos, None);
+        let s = &mut s;
+        let (kind, len) = try_advance!(s.form_header()?);
+        let head = try_advance!(s.component_head(kind, len)?);
+        Ok(advanced(head, s))
     }
 }
 
@@ -363,6 +357,10 @@ impl<'a> SplitOuter<'a> {
         self.end_pos = Some(self.start_pos + self.by + len);
     }
 
+    fn form_header(&mut self) -> Result<Progress<([u8; 4], u32)>, Error> {
+        todo!()
+    }
+
     fn magic_form_header(&mut self) -> Result<Progress<([u8; 4], u32)>, Error> {
         todo!()
     }
@@ -373,6 +371,28 @@ impl<'a> SplitOuter<'a> {
 
     fn peek_chunk(&self) -> Result<Progress<[u8; 4]>, Error> {
         todo!()
+    }
+
+    fn component_head(&mut self, kind: [u8; 4], len: u32) -> Result<Progress<ComponentHead<'a>>, Error> {
+        self.set_distance_to_end(len);
+        let head = match &kind {
+            b"DJVI" => { 
+                let elements = ElementP::mark(self);
+                ComponentHead::Djvi { elements }
+            }
+            b"DJVU" => {
+                let info_content = try_advance!(self.specific_chunk(b"INFO")?);
+                let info = Info::parse(info_content)?;
+                let elements = ElementP::mark_after(self);
+                ComponentHead::Djvu { info, elements }
+            }
+            b"THUM" => {
+                let thumbnails = ThumbnailP::mark(self);
+                ComponentHead::Thum { thumbnails }
+            }
+            _ => return Err(Error {}),
+        };
+        Ok(advanced(head, self))
     }
 }
 
