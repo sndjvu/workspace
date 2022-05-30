@@ -1,8 +1,61 @@
+//! Low-level parser for the DjVu transfer format.
+//!
+//! Entry points to this module are [`document`] and [`indirect_component`].
+//!
+//! ## Parsing strategy
+//!
+//! The goal is to provide everything needed parse a DjVu document
+//! while allowing the caller maximum flexibility in memory management
+//! and I/O handling.
+//!
+//! - Callers don't need to load an entire document or even an entire
+//!   component into memory at once. Generally, only a single chunk
+//!   needs to be loaded to make progress. This is important for
+//!   situations where a document is being received piecemeal over
+//!   the wire, and you want to start parsing it as soon as possible,
+//!   and also desirable whenever you're trying to control memory usage.
+//! - Parsing functions accept `&[u8]`, the lowest common denominator
+//!   for in-memory binary data.
+//! - There are no references to `std::fs`, `std::net`, `std::io`, etc.
+//!   In fact, the whole library is `no_std` by default.
+//! - BZZ decoding is up to the caller. Once decoded, you can pass the
+//!   raw data to the appropriate function as a `&[u8]`. The sndjvu_codec
+//!   library provides everything you need, or you can plug in a different
+//!   decoder.
+//!
+//! ## Pointers
+//!
+//! Here's an illustration of how to think about [`ComponentP`] and [`ElementP`]
+//! ([`ThumbnailP`] is completely analogous):
+//!
+//! ```text
+//!                                       ElementP  ElementP  ElementP  ElementP
+//!                                       v         v         v         v
+//! +-----------+------+-----------+------+---------+---------+---------+
+//! | FORM:DJVM | DIRM | FORM:DJVU | INFO | element | element | element |
+//! +-----------+------+-----------+------+---------+---------+---------+
+//!                    ^                                                ^
+//!                    ComponentP                                       ComponentP
+//! ```
+//!
+//! Of note, all these types can validly be "one-past-the-end". This extends the analogy with
+//! pointers and is necessary anyway to support documents with no components and components with no
+//! elements or thumbnails. Trying to `feed` a one-past-the-end value will always return
+//! [`Progress::End`].
+
+// FIXME the DjVu spec is unclear about whether a trailing padding byte at the end of a FORM
+// chunk's content is allowed/required. we should accomodate the presence of this kind of
+// padding
+
+// FIXME figure out a better general strategy for working with the `Progress` type and
+// computing `by` and `hint`. note that right now we're computing `Advanced { by }` even
+// for internal functions where that value will never be examined
+
 /// The outcome of a parsing operation, if no [`Error`] was encountered.
 pub enum Progress<T, D = Void> {
     /// Not enough data was presented to complete the parsing operation.
     None {
-        /// If [`Some`], suggests how many more bytes might be needed to advance.
+        /// Significance to be determined.
         hint: Option<usize>,
     },
     /// Parsing was successful.
@@ -10,6 +63,8 @@ pub enum Progress<T, D = Void> {
         /// The parsed object.
         head: T,
         /// How many bytes were consumed.
+        ///
+        /// The caller should advance its byte stream by this amount.
         by: usize,
     },
     /// Nothing remains to be parsed.
@@ -21,7 +76,14 @@ pub enum Progress<T, D = Void> {
 
 /// Uninhabited type, used to punch a hole in [`Progress`].
 ///
-/// This will become an alias for the never type `!` once that's stabilized.
+/// This will become an alias for the never type [`!`] once that's stabilized. In the meantime,
+/// `Void` does not enjoy the same special coercions as `!`, but you can mimic them like this:
+///
+/// ```
+/// fn explode<T>(x: Void) -> T {
+///     match x {}
+/// }
+/// ```
 pub enum Void {}
 
 fn advanced<T, D>(head: T, s: &SplitOuter<'_>) -> Progress<T, D> {
@@ -83,7 +145,6 @@ pub fn indirect_component(data: &[u8]) -> Result<Progress<ComponentHead<'_>>, Er
 pub enum DocumentHead<'a> {
     SinglePage {
         info: Info<'a>,
-        /// "Pointer" to the first element.
         elements: ElementP,
     },
     MultiPage {
