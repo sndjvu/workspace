@@ -90,13 +90,16 @@ fn advanced<T, D>(head: T, s: &SplitOuter<'_>) -> Progress<T, D> {
     Progress::Advanced { head, by: s.by as usize }
 }
 
-// workaround for unstable ? overloading (Try trait)
+enum ProgressInternal<T> {
+    None(Option<usize>),
+    Advanced(T),
+}
+
 macro_rules! try_advance {
     ( $x:expr ) => {
         match $x {
-            Progress::None { hint } => return Ok(Progress::None { hint }),
-            Progress::Advanced { head, .. } => head,
-            Progress::End(d) => match d {},
+            ProgressInternal::None(hint) => return Ok(Progress::None { hint }),
+            ProgressInternal::Advanced(head) => head,
         }
     };
 }
@@ -138,7 +141,8 @@ pub fn indirect_component(data: &[u8]) -> Result<Progress<ComponentHead<'_>>, Er
     let mut s = split_outer(data, 0, None);
     let s = &mut s;
     let (kind, len) = try_advance!(s.magic_form_header()?);
-    s.component_head(kind, len)
+    let head = try_advance!(s.component_head(kind, len)?);
+    Ok(advanced(head, s))
 }
 
 /// Parsed representation of the start of a document.
@@ -475,6 +479,15 @@ struct SplitOuter<'a> {
     by: u32,
 }
 
+macro_rules! try_advance_internal {
+    ( $x:expr ) => {
+        match $x {
+            ProgressInternal::None(hint) => return Ok(ProgressInternal::None(hint)),
+            ProgressInternal::Advanced(head) => head,
+        }
+    };
+}
+
 impl<'a> SplitOuter<'a> {
     fn pos(&self) -> Pos {
         self.start_pos + self.by
@@ -495,36 +508,45 @@ impl<'a> SplitOuter<'a> {
         &self.full[self.by as usize..end]
     }
 
-    fn header<const N: usize>(&mut self) -> Option<&'a [[u8; 4]; N]> {
-        todo!()
-    }
-
-    fn field(&mut self, len: u32) -> Option<Field<'a>> {
-        todo!()
-    }
-
-    fn align(&mut self) -> Progress<()> {
-        let mut padding = 0;
-        if self.pos() % 2 != 0 {
-            if self.end_pos == Some(self.pos()) {
-                return Progress::None { hint: None };
+    fn header<const N: usize>(&mut self) -> ProgressInternal<&'a [[u8; 4]; N]> {
+        let (arrays, _) = crate::shim::as_arrays(self.remaining());
+        match crate::shim::split_array(arrays) {
+            None => ProgressInternal::None(Some(4 * N)),
+            Some((header, _)) => {
+                self.by += 4 * N as u32; // XXX
+                ProgressInternal::Advanced(header)
             }
-            padding = 1;
         }
-        self.by += padding;
-        Progress::Advanced { head: (), by: padding as usize }
     }
 
-    fn form_header(&mut self) -> Result<Progress<([u8; 4], u32)>, Error> {
-        let padding = match self.align() {
-            Progress::None { .. } => return Ok(Progress::None { hint: None }), // FIXME
-            Progress::Advanced { by, .. } => by,
-            Progress::End(d) => match d {},
-        };
-        let &[id, xs, kind] = match self.header() {
-            None => return Ok(Progress::None { hint: None }), // FIXME
-            Some(got) => got,
-        };
+    fn field(&mut self, len: u32) -> ProgressInternal<Field<'a>> {
+        if self.remaining().len() >= len as usize {
+            let field = Field {
+                full: self.full,
+                start: self.by as usize,
+                start_pos: self.pos(),
+                end: self.by as usize + len as usize,
+            };
+            self.by += len;
+            ProgressInternal::Advanced(field)
+        } else {
+            ProgressInternal::None(Some(len as usize))
+        }
+    }
+
+    fn align(&mut self) -> ProgressInternal<()> {
+        if self.pos() % 2 != 0 {
+            if self.remaining().is_empty() {
+                return ProgressInternal::None(None);
+            }
+            self.by += 1;
+        }
+        ProgressInternal::Advanced(())
+    }
+
+    fn form_header(&mut self) -> Result<ProgressInternal<([u8; 4], u32)>, Error> {
+        try_advance_internal!(self.align());
+        let &[id, xs, kind] = try_advance_internal!(self.header());
         let len = u32::from_be_bytes(xs);
         if &id != b"FORM" {
             return Err(Error {});
@@ -532,15 +554,12 @@ impl<'a> SplitOuter<'a> {
         if !is_potential_chunk_id(kind) {
             return Err(Error {});
         }
-        Ok(Progress::Advanced { head: (kind, len - 4), by: padding + 3 * 4 })
+        Ok(ProgressInternal::Advanced((kind, len - 4)))
     }
 
-    fn magic_form_header(&mut self) -> Result<Progress<([u8; 4], u32)>, Error> {
+    fn magic_form_header(&mut self) -> Result<ProgressInternal<([u8; 4], u32)>, Error> {
         // no need to align here, magic number always occurs at the very beginning
-        let &[magic, id, xs, kind] = match self.header() {
-            None => return Ok(Progress::None { hint: None }), // FIXME
-            Some(got) => got,
-        };
+        let &[magic, id, xs, kind] = try_advance_internal!(self.header());
         let len = u32::from_be_bytes(xs);
         if &magic != b"AT&T" {
             return Err(Error {});
@@ -551,62 +570,39 @@ impl<'a> SplitOuter<'a> {
         if !is_potential_chunk_id(kind) {
             return Err(Error {});
         }
-        Ok(Progress::Advanced { head: (kind, len - 4), by: 4 * 4 })
+        Ok(ProgressInternal::Advanced((kind, len)))
     }
 
-    fn chunk(&mut self) -> Result<Progress<([u8; 4], Field<'a>)>, Error> {
-        let padding = match self.align() {
-            Progress::None { .. } => return Ok(Progress::None { hint: None }), // FIXME
-            Progress::Advanced { by, .. } => by,
-            Progress::End(d) => match d {},
-        };
-        let &[id, xs] = match self.header() {
-            None => return Ok(Progress::None { hint: None }), // FIXME
-            Some(got) => got,
-        };
+    fn chunk(&mut self) -> Result<ProgressInternal<([u8; 4], Field<'a>)>, Error> {
+        try_advance_internal!(self.align());
+        let &[id, xs] = try_advance_internal!(self.header());
         let len = u32::from_be_bytes(xs);
         if !is_potential_chunk_id(id) {
             return Err(Error {});
         }
-        let content = match self.field(len) {
-            None => return Ok(Progress::None { hint: None }), // FIXME
-            Some(got) => got,
-        };
-        Ok(Progress::Advanced { head: (id, content), by: padding + 2 * 4 + len as usize })
+        let content = try_advance_internal!(self.field(len));
+        Ok(ProgressInternal::Advanced((id, content)))
     }
 
-    fn specific_chunk(&mut self, expected: &[u8; 4]) -> Result<Progress<Field<'a>>, Error> {
-        let progress = match self.chunk()? {
-            Progress::None { hint } => Progress::None { hint },
-            Progress::Advanced { head: (id, content), by } => {
-                if &id != expected {
-                    return Err(Error {});
-                }
-                Progress::Advanced { head: content, by }
-            }
-            Progress::End(d) => match d {},
-        };
-        Ok(progress)
-    }
-
-    fn peek_chunk(&self) -> Result<Progress<[u8; 4]>, Error> {
-        let mut s = self.clone();
-        match s.align() {
-            Progress::None { .. } => return Ok(Progress::None { hint: None }), // FIXME
-            Progress::Advanced { .. } => {},
-            Progress::End(d) => match d {},
+    fn specific_chunk(&mut self, expected: &[u8; 4]) -> Result<ProgressInternal<Field<'a>>, Error> {
+        let (id, content) = try_advance_internal!(self.chunk()?);
+        if &id != expected {
+            return Err(Error {});
         }
-        let id = match s.header() {
-            None => return Ok(Progress::None { hint: None }), // FIXME
-            Some(&[got]) => got,
-        };
+        Ok(ProgressInternal::Advanced(content))
+    }
+
+    fn peek_chunk(&self) -> Result<ProgressInternal<[u8; 4]>, Error> {
+        let mut s = self.clone();
+        try_advance_internal!(s.align());
+        let &[id] = try_advance_internal!(s.header());
         if !is_potential_chunk_id(id) {
             return Err(Error {});
         }
-        Ok(Progress::Advanced { head: id, by: 0 })
+        Ok(ProgressInternal::Advanced(id))
     }
 
-    fn component_head(&mut self, kind: [u8; 4], len: u32) -> Result<Progress<ComponentHead<'a>>, Error> {
+    fn component_head(&mut self, kind: [u8; 4], len: u32) -> Result<ProgressInternal<ComponentHead<'a>>, Error> {
         let end_pos = self.set_distance_to_end(len);
         let head = match &kind {
             b"DJVI" => { 
@@ -614,7 +610,7 @@ impl<'a> SplitOuter<'a> {
                 ComponentHead::Djvi { elements }
             }
             b"DJVU" => {
-                let content = try_advance!(self.specific_chunk(b"INFO")?);
+                let content = try_advance_internal!(self.specific_chunk(b"INFO")?);
                 let info = InfoChunk { content };
                 let elements = ElementP::new(self.pos(), end_pos);
                 ComponentHead::Djvu { info, elements }
@@ -625,8 +621,7 @@ impl<'a> SplitOuter<'a> {
             }
             _ => return Err(Error {}),
         };
-        // can't use fn advanced here
-        todo!()
+        Ok(ProgressInternal::Advanced(head))
     }
 }
 
