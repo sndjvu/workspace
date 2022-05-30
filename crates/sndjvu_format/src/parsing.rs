@@ -43,20 +43,20 @@ pub struct Error {
 }
 
 pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
-    let mut s = split_outer(data, 0, None);
+    let mut s = split_outer(data, 0, None); // don't know end_pos yet
     let s = &mut s;
     let (kind, len) = try_advance!(s.magic_form_header()?);
-    s.set_distance_to_end(len);
+    let end_pos = s.set_distance_to_end(len);
     let head = match &kind {
         b"DJVU" => {
             let info_content = try_advance!(s.specific_chunk(b"INFO")?);
             let info = Info::parse(info_content)?;
-            let elements = ElementP::mark_after(s);
+            let elements = ElementP::new(s.pos(), end_pos);
             DocumentHead::SinglePage { info, elements }
         }
         b"DJVM" => {
             let dirm_content = try_advance!(s.specific_chunk(b"DIRM")?);
-            let dirm = Dirm::parse(dirm_content)?;
+            let dirm = Dirm::parse(dirm_content, end_pos)?;
             let kind = try_advance!(s.peek_chunk()?);
             let navm = if &kind == b"NAVM" {
                 let content = try_advance!(s.specific_chunk(b"NAVM")?);
@@ -139,43 +139,23 @@ fn is_potential_chunk_id(xs: [u8; 4]) -> bool {
     xs.iter().all(u8::is_ascii_alphanumeric)
 }
 
-/// "Pointer" to an [`Element`] within a document.
-pub struct ElementP {
-    pos: Pos,
-    end_pos: Pos,
-}
-
-impl ElementP {
-    fn mark(s: &SplitOuter<'_>) -> Self {
-        todo!()
-    }
-
-    fn mark_after(s: &SplitOuter<'_>) -> Self {
-        // make sure to take care of padding
-        todo!()
-    }
-
-    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<Element<'a>, ()>, Error> {
-        todo!()
-    }
-
-    pub fn is_end(&self) -> bool {
-        self.pos == self.end_pos
-    }
-}
-
+/// Parsed representation of an element of a page.
 pub enum Element<'a> {
     Incl(Incl<'a>),
 }
 
 impl<'a> Element<'a> {
     pub fn after(&self) -> ElementP {
-        todo!()
+        match *self {
+            Self::Incl(Incl { after_pos, end_pos, .. }) => ElementP::new(after_pos, end_pos),
+        }
     }
 }
 
 pub struct Incl<'a> {
     content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
 }
 
 pub struct Dirm<'a> {
@@ -187,7 +167,7 @@ pub struct Dirm<'a> {
 }
 
 impl<'a> Dirm<'a> {
-    fn parse(content: Field<'a>) -> Result<Self, Error> {
+    fn parse(content: Field<'a>, end_pos: Pos) -> Result<Self, Error> {
         let mut s = content.split();
         let flags = s.byte()?;
         let is_bundled = flags >> 7 != 0;
@@ -196,7 +176,7 @@ impl<'a> Dirm<'a> {
         let bundled = if is_bundled {
             let arrays = s.slice_of_arrays(num_components as usize)?;
             let offsets = ComponentOffset::cast_slice(arrays);
-            Some(Bundled { offsets })
+            Some(Bundled { offsets, end_pos })
         } else {
             None
         };
@@ -213,8 +193,10 @@ impl<'a> Dirm<'a> {
 
 pub struct Bundled<'a> {
     offsets: &'a [ComponentOffset],
+    end_pos: Pos,
 }
 
+#[derive(Clone, Copy, Debug)]
 #[repr(transparent)]
 struct ComponentOffset([u8; 4]);
 
@@ -228,27 +210,32 @@ impl ComponentOffset {
             )
         }
     }
+
+    fn get(self) -> u32 {
+        u32::from_be_bytes(self.0)
+    }
 }
 
 impl<'a> Bundled<'a> {
     pub fn get(&self, i: usize) -> Option<ComponentP> {
-        todo!()
+        self.offsets.get(i).map(|off| ComponentP::new(off.get(), self.end_pos))
     }
 
     pub fn iter(&self) -> BundledIter<'a> {
-        todo!()
+        BundledIter { offsets: self.offsets.iter(), end_pos: self.end_pos }
     }
 }
 
 pub struct BundledIter<'a> {
     offsets: core::slice::Iter<'a, ComponentOffset>,
+    end_pos: Pos,
 }
 
 impl<'a> Iterator for BundledIter<'a> {
     type Item = ComponentP;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        self.offsets.next().map(|off| ComponentP::new(off.get(), self.end_pos))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -261,7 +248,7 @@ impl<'a> core::iter::FusedIterator for BundledIter<'a> {}
 
 impl<'a> core::iter::DoubleEndedIterator for BundledIter<'a> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        todo!()
+        self.offsets.next_back().map(|off| ComponentP::new(off.get(), self.end_pos))
     }
 }
 
@@ -269,31 +256,7 @@ pub struct Navm<'a> {
     content: Field<'a>,
 }
 
-pub struct ComponentP {
-    pos: Pos,
-}
-
-impl ComponentP {
-    pub fn offset(&self) -> u32 {
-        todo!()
-    }
-
-    pub fn is_end(&self) -> bool {
-        todo!()
-    }
-
-    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<ComponentHead<'a>, ()>, Error> {
-        if self.is_end() {
-            return Ok(Progress::End(()));
-        }
-        let mut s = split_outer(data, self.pos, None);
-        let s = &mut s;
-        let (kind, len) = try_advance!(s.form_header()?);
-        let head = try_advance!(s.component_head(kind, len)?);
-        Ok(advanced(head, s))
-    }
-}
-
+/// Parsed representation of the start of a component.
 pub enum ComponentHead<'a> {
     Djvi {
         elements: ElementP,
@@ -307,34 +270,128 @@ pub enum ComponentHead<'a> {
     },
 }
 
-pub struct ThumbnailP {
-}
-
-impl ThumbnailP {
-    fn mark(s: &SplitOuter<'_>) -> Self {
-        todo!()
-    }
-
-    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<Thumbnail<'a>, ()>, Error> {
-        todo!()
-    }
-
-    pub fn is_end(&self) -> bool {
-        todo!()
-    }
-}
-
+/// Parsed representation of a thumbnail image (`TH44` chunk).
 pub struct Thumbnail<'a> {
     content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
 }
 
 impl<'a> Thumbnail<'a> {
     pub fn after(&self) -> ThumbnailP {
-        todo!()
+        ThumbnailP::new(self.after_pos, self.end_pos)
     }
 }
 
+/// Represents an offset from the beginning of a document or indirect component.
+///
+/// "Beginning" means the beginning of the *file*---before the magic number.
+/// This is how the `DIRM` chunk stores component offsets, and we stick to
+/// the same convention.
 type Pos = u32;
+
+/// Pointer-like immutable cursor to the start or end of an element.
+pub struct ElementP {
+    pos: Pos,
+    /// The position at which the *containing `FORM`* ends.
+    ///
+    /// This is one past the last byte of the last element, excluding any trailing padding.
+    /// We store this so that `ElementP::is_end` can be implemented.
+    end_pos: Pos,
+}
+
+impl ElementP {
+    fn new(pos: Pos, end_pos: Pos) -> Self {
+        Self { pos, end_pos }
+    }
+
+    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<Element<'a>, ()>, Error> {
+        if self.pos == self.end_pos {
+            return Ok(Progress::End(()));
+        }
+        let mut s = split_outer(data, self.pos, Some(self.end_pos));
+        let s = &mut s;
+        let (kind, content) = try_advance!(s.chunk()?);
+        let element = match &kind {
+            b"INCL" => {
+                let incl = Incl {
+                    content,
+                    after_pos: s.pos(),
+                    end_pos: self.end_pos
+                };
+                Element::Incl(incl)
+            }
+            _ => return Err(Error {}),
+        };
+        Ok(advanced(element, s))
+    }
+
+    pub fn is_end(&self) -> bool {
+        self.pos == self.end_pos
+    }
+}
+
+/// Pointer-like immutable cursor to the start or end of a component.
+pub struct ComponentP {
+    pos: Pos,
+    end_pos: Pos,
+}
+
+impl ComponentP {
+    fn new(pos: Pos, end_pos: Pos) -> Self {
+        Self { pos, end_pos }
+    }
+
+    pub fn offset(&self) -> u32 {
+        self.pos
+    }
+
+    pub fn is_end(&self) -> bool {
+        self.pos == self.end_pos
+    }
+
+    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<ComponentHead<'a>, ()>, Error> {
+        if self.is_end() {
+            return Ok(Progress::End(()));
+        }
+        let mut s = split_outer(data, self.pos, Some(self.end_pos));
+        let s = &mut s;
+        let (kind, len) = try_advance!(s.form_header()?);
+        let head = try_advance!(s.component_head(kind, len)?);
+        Ok(advanced(head, s))
+    }
+}
+
+/// Pointer-like immutable cursor to the start or end of a thumbnail.
+pub struct ThumbnailP {
+    pos: Pos,
+    end_pos: Pos,
+}
+
+impl ThumbnailP {
+    fn new(pos: Pos, end_pos: Pos) -> Self {
+        Self { pos, end_pos }
+    }
+
+    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<Thumbnail<'a>, ()>, Error> {
+        if self.is_end() {
+            return Ok(Progress::End(()));
+        }
+        let mut s = split_outer(data, self.pos, Some(self.end_pos));
+        let s = &mut s;
+        let content = try_advance!(s.specific_chunk(b"TH44")?);
+        let thumbnail = Thumbnail {
+            content,
+            after_pos: s.pos(),
+            end_pos: self.end_pos,
+        };
+        Ok(advanced(thumbnail, s))
+    }
+
+    pub fn is_end(&self) -> bool {
+        self.pos == self.end_pos
+    }
+}
 
 fn split_outer(full: &[u8], start_pos: Pos, end_pos: Option<Pos>) -> SplitOuter<'_> {
     SplitOuter {
@@ -345,6 +402,7 @@ fn split_outer(full: &[u8], start_pos: Pos, end_pos: Option<Pos>) -> SplitOuter<
     }
 }
 
+#[derive(Clone, Debug)]
 struct SplitOuter<'a> {
     full: &'a [u8],
     start_pos: Pos,
@@ -353,46 +411,157 @@ struct SplitOuter<'a> {
 }
 
 impl<'a> SplitOuter<'a> {
-    fn set_distance_to_end(&mut self, len: u32) {
-        self.end_pos = Some(self.start_pos + self.by + len);
+    fn pos(&self) -> Pos {
+        self.start_pos + self.by
+    }
+
+    fn set_distance_to_end(&mut self, len: u32) -> Pos {
+        let end_pos = self.pos() + len;
+        self.end_pos = Some(end_pos);
+        end_pos
+    }
+
+    fn remaining(&self) -> &'a [u8] {
+        let end = if let Some(pos) = self.end_pos {
+            (pos - self.start_pos) as usize
+        } else {
+            self.full.len()
+        };
+        &self.full[self.by as usize..end]
+    }
+
+    fn header<const N: usize>(&mut self) -> Option<&'a [[u8; 4]; N]> {
+        todo!()
+    }
+
+    fn field(&mut self, len: u32) -> Option<Field<'a>> {
+        todo!()
+    }
+
+    fn align(&mut self) -> Progress<()> {
+        let mut padding = 0;
+        if self.pos() % 2 != 0 {
+            if self.end_pos == Some(self.pos()) {
+                return Progress::None { hint: None };
+            }
+            padding = 1;
+        }
+        self.by += padding;
+        Progress::Advanced { head: (), by: padding as usize }
     }
 
     fn form_header(&mut self) -> Result<Progress<([u8; 4], u32)>, Error> {
-        todo!()
+        let padding = match self.align() {
+            Progress::None { .. } => return Ok(Progress::None { hint: None }), // FIXME
+            Progress::Advanced { by, .. } => by,
+            Progress::End(d) => match d {},
+        };
+        let &[id, xs, kind] = match self.header() {
+            None => return Ok(Progress::None { hint: None }), // FIXME
+            Some(got) => got,
+        };
+        let len = u32::from_be_bytes(xs);
+        if &id != b"FORM" {
+            return Err(Error {});
+        }
+        if !is_potential_chunk_id(kind) {
+            return Err(Error {});
+        }
+        Ok(Progress::Advanced { head: (kind, len - 4), by: padding + 3 * 4 })
     }
 
     fn magic_form_header(&mut self) -> Result<Progress<([u8; 4], u32)>, Error> {
-        todo!()
+        // no need to align here, magic number always occurs at the very beginning
+        let &[magic, id, xs, kind] = match self.header() {
+            None => return Ok(Progress::None { hint: None }), // FIXME
+            Some(got) => got,
+        };
+        let len = u32::from_be_bytes(xs);
+        if &magic != b"AT&T" {
+            return Err(Error {});
+        }
+        if &id != b"FORM" {
+            return Err(Error {});
+        }
+        if !is_potential_chunk_id(kind) {
+            return Err(Error {});
+        }
+        Ok(Progress::Advanced { head: (kind, len - 4), by: 4 * 4 })
     }
 
-    fn specific_chunk(&mut self, kind: &[u8; 4]) -> Result<Progress<Field<'a>>, Error> {
-        todo!()
+    fn chunk(&mut self) -> Result<Progress<([u8; 4], Field<'a>)>, Error> {
+        let padding = match self.align() {
+            Progress::None { .. } => return Ok(Progress::None { hint: None }), // FIXME
+            Progress::Advanced { by, .. } => by,
+            Progress::End(d) => match d {},
+        };
+        let &[id, xs] = match self.header() {
+            None => return Ok(Progress::None { hint: None }), // FIXME
+            Some(got) => got,
+        };
+        let len = u32::from_be_bytes(xs);
+        if !is_potential_chunk_id(id) {
+            return Err(Error {});
+        }
+        let content = match self.field(len) {
+            None => return Ok(Progress::None { hint: None }), // FIXME
+            Some(got) => got,
+        };
+        Ok(Progress::Advanced { head: (id, content), by: padding + 2 * 4 + len as usize })
+    }
+
+    fn specific_chunk(&mut self, expected: &[u8; 4]) -> Result<Progress<Field<'a>>, Error> {
+        let progress = match self.chunk()? {
+            Progress::None { hint } => Progress::None { hint },
+            Progress::Advanced { head: (id, content), by } => {
+                if &id != expected {
+                    return Err(Error {});
+                }
+                Progress::Advanced { head: content, by }
+            }
+            Progress::End(d) => match d {},
+        };
+        Ok(progress)
     }
 
     fn peek_chunk(&self) -> Result<Progress<[u8; 4]>, Error> {
-        todo!()
+        let mut s = self.clone();
+        match s.align() {
+            Progress::None { .. } => return Ok(Progress::None { hint: None }), // FIXME
+            Progress::Advanced { .. } => {},
+            Progress::End(d) => match d {},
+        }
+        let id = match s.header() {
+            None => return Ok(Progress::None { hint: None }), // FIXME
+            Some(&[got]) => got,
+        };
+        if !is_potential_chunk_id(id) {
+            return Err(Error {});
+        }
+        Ok(Progress::Advanced { head: id, by: 0 })
     }
 
     fn component_head(&mut self, kind: [u8; 4], len: u32) -> Result<Progress<ComponentHead<'a>>, Error> {
-        self.set_distance_to_end(len);
+        let end_pos = self.set_distance_to_end(len);
         let head = match &kind {
             b"DJVI" => { 
-                let elements = ElementP::mark(self);
+                let elements = ElementP::new(self.pos(), end_pos);
                 ComponentHead::Djvi { elements }
             }
             b"DJVU" => {
                 let info_content = try_advance!(self.specific_chunk(b"INFO")?);
                 let info = Info::parse(info_content)?;
-                let elements = ElementP::mark_after(self);
+                let elements = ElementP::new(self.pos(), end_pos);
                 ComponentHead::Djvu { info, elements }
             }
             b"THUM" => {
-                let thumbnails = ThumbnailP::mark(self);
+                let thumbnails = ThumbnailP::new(self.pos(), end_pos);
                 ComponentHead::Thum { thumbnails }
             }
             _ => return Err(Error {}),
         };
-        Ok(advanced(head, self))
+        // can't use fn advanced here
+        todo!()
     }
 }
 
@@ -405,15 +574,6 @@ struct Field<'a> {
 }
 
 impl<'a> Field<'a> {
-    fn new(full: &'a [u8], start_pos: Pos) -> Self {
-        Self {
-            full,
-            start: 0,
-            start_pos,
-            end: full.len(),
-        }
-    }
-
     fn split(self) -> SplitInner<'a> {
         SplitInner {
             parent: self,
@@ -428,27 +588,50 @@ struct SplitInner<'a> {
 }
 
 impl<'a> SplitInner<'a> {
+    fn remaining(&self) -> &'a [u8] {
+        &self.parent.full[self.parent.start + self.by as usize..self.parent.end]
+    }
+
     fn array<const N: usize>(&mut self) -> Result<&'a [u8; N], Error> {
-        todo!()
+        if let Some((array, _)) = crate::shim::split_array(self.remaining()) {
+            self.by += N as u32; // XXX
+            Ok(array)
+        } else {
+            Err(Error {})
+        }
     }
 
     fn slice_of_arrays<const N: usize>(&mut self, n: usize) -> Result<&'a [[u8; N]], Error> {
-        todo!()
+        let (arrays, _) = crate::shim::as_arrays(self.remaining());
+        if let Some(arrays) = arrays.get(..n) {
+            self.by += n as u32 * N as u32; // XXX
+            Ok(arrays)
+        } else {
+            Err(Error {})
+        }
     }
 
     fn byte(&mut self) -> Result<u8, Error> {
-        todo!()
+        let &[x] = self.array()?;
+        Ok(x)
     }
 
     fn u16_be(&mut self) -> Result<u16, Error> {
-        todo!()
+        let &xs = self.array()?;
+        Ok(u16::from_be_bytes(xs))
     }
 
     fn u16_le(&mut self) -> Result<u16, Error> {
-        todo!()
+        let &xs = self.array()?;
+        Ok(u16::from_le_bytes(xs))
     }
 
     fn rest(self) -> Field<'a> {
-        todo!()
+        Field {
+            full: self.parent.full,
+            start: self.parent.start + self.by as usize,
+            start_pos: self.parent.start_pos + self.by,
+            end: self.parent.end,
+        }
     }
 }
