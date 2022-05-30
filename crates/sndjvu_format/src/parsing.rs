@@ -111,14 +111,14 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
     let end_pos = s.set_distance_to_end(len);
     let head = match &kind {
         b"DJVU" => {
-            let info_content = try_advance!(s.specific_chunk(b"INFO")?);
-            let info = Info::parse(info_content)?;
+            let content = try_advance!(s.specific_chunk(b"INFO")?);
+            let info = InfoChunk { content };
             let elements = ElementP::new(s.pos(), end_pos);
             DocumentHead::SinglePage { info, elements }
         }
         b"DJVM" => {
-            let dirm_content = try_advance!(s.specific_chunk(b"DIRM")?);
-            let dirm = Dirm::parse(dirm_content, end_pos)?;
+            let content = try_advance!(s.specific_chunk(b"DIRM")?);
+            let dirm = DirmChunk { content, end_pos };
             let kind = try_advance!(s.peek_chunk()?);
             let navm = if &kind == b"NAVM" {
                 let content = try_advance!(s.specific_chunk(b"NAVM")?);
@@ -144,18 +144,17 @@ pub fn indirect_component(data: &[u8]) -> Result<Progress<ComponentHead<'_>>, Er
 /// Parsed representation of the start of a document.
 pub enum DocumentHead<'a> {
     SinglePage {
-        info: Info<'a>,
+        info: InfoChunk<'a>,
         elements: ElementP,
     },
     MultiPage {
-        /// The parsed `DIRM` chunk.
-        ///
-        /// You can obtain [`ComponentP`] objects for each component from this type,
-        /// if the document is bundled.
-        dirm: Dirm<'a>,
-        /// The parsed `NAVM` chunk.
+        dirm: DirmChunk<'a>,
         navm: Option<Navm<'a>>,
     },
+}
+
+pub struct InfoChunk<'a> {
+    content: Field<'a>,
 }
 
 pub struct Info<'a> {
@@ -168,9 +167,9 @@ pub struct Info<'a> {
     pub rotation: crate::PageRotation,
 }
 
-impl<'a> Info<'a> {
-    fn parse(content: Field<'a>) -> Result<Self, Error> {
-        let mut s = content.split();
+impl<'a> InfoChunk<'a> {
+    pub fn parse(&self) -> Result<Info<'a>, Error> {
+        let mut s = self.content.split();
         let width = s.u16_be()?;
         let height = s.u16_be()?;
         let &[minor, major] = s.array()?;
@@ -184,8 +183,8 @@ impl<'a> Info<'a> {
             5 => crate::PageRotation::Cw,
             _ => crate::PageRotation::Up, // see djvuchanges.txt
         };
-        Ok(Self {
-            content,
+        Ok(Info {
+            content: self.content,
             width,
             height,
             version: crate::InfoVersion { major, minor },
@@ -219,17 +218,14 @@ pub struct Incl<'a> {
     end_pos: Pos,
 }
 
-pub struct Dirm<'a> {
+pub struct DirmChunk<'a> {
     content: Field<'a>,
-    pub version: crate::DirmVersion,
-    pub num_components: u16,
-    pub bundled: Option<Bundled<'a>>,
-    bzz: Field<'a>,
+    end_pos: Pos,
 }
 
-impl<'a> Dirm<'a> {
-    fn parse(content: Field<'a>, end_pos: Pos) -> Result<Self, Error> {
-        let mut s = content.split();
+impl<'a> DirmChunk<'a> {
+    pub fn parse(&self) -> Result<Dirm<'a>, Error> {
+        let mut s = self.content.split();
         let flags = s.byte()?;
         let is_bundled = flags >> 7 != 0;
         let version = crate::DirmVersion(flags & 0b0111_1111);
@@ -237,19 +233,27 @@ impl<'a> Dirm<'a> {
         let bundled = if is_bundled {
             let arrays = s.slice_of_arrays(num_components as usize)?;
             let offsets = ComponentOffset::cast_slice(arrays);
-            Some(Bundled { offsets, end_pos })
+            Some(Bundled { offsets, end_pos: self.end_pos })
         } else {
             None
         };
         let bzz = s.rest();
         Ok(Dirm {
-            content,
+            content: self.content,
             version,
             num_components,
             bundled,
             bzz,
         })
     }
+}
+
+pub struct Dirm<'a> {
+    content: Field<'a>,
+    pub version: crate::DirmVersion,
+    pub num_components: u16,
+    pub bundled: Option<Bundled<'a>>,
+    bzz: Field<'a>,
 }
 
 pub struct Bundled<'a> {
@@ -323,7 +327,7 @@ pub enum ComponentHead<'a> {
         elements: ElementP,
     },
     Djvu {
-        info: Info<'a>,
+        info: InfoChunk<'a>,
         elements: ElementP,
     },
     Thum {
@@ -610,8 +614,8 @@ impl<'a> SplitOuter<'a> {
                 ComponentHead::Djvi { elements }
             }
             b"DJVU" => {
-                let info_content = try_advance!(self.specific_chunk(b"INFO")?);
-                let info = Info::parse(info_content)?;
+                let content = try_advance!(self.specific_chunk(b"INFO")?);
+                let info = InfoChunk { content };
                 let elements = ElementP::new(self.pos(), end_pos);
                 ComponentHead::Djvu { info, elements }
             }
