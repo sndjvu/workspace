@@ -47,9 +47,7 @@
 // chunk's content is allowed/required. we should accomodate the presence of this kind of
 // padding
 
-// FIXME figure out a better general strategy for working with the `Progress` type and
-// computing `by` and `hint`. note that right now we're computing `Advanced { by }` even
-// for internal functions where that value will never be examined
+use core::num::NonZeroU8;
 
 /// The outcome of a parsing operation, if no [`Error`] was encountered.
 pub enum Progress<T, D = Void> {
@@ -284,6 +282,7 @@ impl<'a> TxtzChunk<'a> {
 }
 
 pub struct Txt<'a> {
+    // FIXME this should have a content field?
     pub text: &'a [u8],
     pub version: crate::TxtVersion,
     pub zones: &'a [Zone],
@@ -397,10 +396,76 @@ pub struct Fg44Chunk<'a> {
     end_pos: Pos,
 }
 
+impl<'a> Fg44Chunk<'a> {
+    pub fn parse(&self) -> Result<Iw44<'a>, Error> {
+        Iw44::parse_from(self.content.split())
+    }
+}
+
 pub struct Bg44Chunk<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
+}
+
+impl<'a> Bg44Chunk<'a> {
+    pub fn parse(&self) -> Result<Iw44<'a>, Error> {
+        Iw44::parse_from(self.content.split())
+    }
+}
+
+pub struct Iw44<'a> {
+    // FIXME this should have a content field?
+    pub kind: Iw44Kind,
+    pub num_slices: u8,
+    rest: Field<'a>,
+}
+
+impl<'a> Iw44<'a> {
+    fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
+        let byte = s.byte()?;
+        let num_slices = s.byte()?;
+        let kind = if let Some(serial) = NonZeroU8::new(byte) {
+            Iw44Kind::Tail { serial }
+        } else {
+            let byte = s.byte()?;
+            let colors = if byte & (1 << 7) != 0 {
+                crate::Iw44ColorSpace::Gray
+            } else {
+                crate::Iw44ColorSpace::YCbCr
+            };
+            let major = byte & 0b0111_1111;
+            let minor = s.byte()?;
+            let version = crate::Iw44Version { major, minor };
+            let width = s.u16_be()?;
+            let height = s.u16_be()?;
+            let initial_cdc = crate::Cdc(s.byte()?);
+            Iw44Kind::Head {
+                version,
+                colors,
+                width,
+                height,
+                initial_cdc,
+            }
+        };
+        let rest = s.rest();
+        Ok(Iw44 {
+            kind,
+            num_slices,
+            rest,
+        })
+    }
+}
+
+pub enum Iw44Kind {
+    Head {
+        version: crate::Iw44Version,
+        colors: crate::Iw44ColorSpace,
+        width: u16,
+        height: u16,
+        initial_cdc: crate::Cdc,
+    },
+    Tail { serial: NonZeroU8 },
 }
 
 pub struct FgbzChunk<'a> {

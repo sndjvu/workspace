@@ -18,12 +18,12 @@ impl TxtVersion {
 }
 
 pub struct Iw44Version {
-    _major: u8,
-    _minor: u8,
+    major: u8,
+    minor: u8,
 }
 
 impl Iw44Version {
-    pub const CURRENT: Self = Self { _major: 1, _minor: 2 };
+    pub const CURRENT: Self = Self { major: 1, minor: 2 };
 }
 
 pub struct FgbzVersion(u8);
@@ -75,6 +75,8 @@ pub enum Iw44ColorSpace {
     YCbCr,
     Gray,
 }
+
+pub struct Cdc(u8);
 
 pub mod parsing;
 pub(crate) mod shim;
