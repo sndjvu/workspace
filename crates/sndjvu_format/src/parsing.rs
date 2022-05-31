@@ -304,8 +304,8 @@ impl ComponentOffset {
 }
 
 impl<'a> Bundled<'a> {
-    pub fn get(&self, i: usize) -> Option<ComponentP> {
-        self.offsets.get(i).map(|off| ComponentP::new(off.get(), self.end_pos))
+    pub fn get(&self, i: u16) -> Option<ComponentP> {
+        self.offsets.get(i as usize).map(|off| ComponentP::new(off.get(), self.end_pos))
     }
 
     pub fn iter(&self) -> BundledIter<'a> {
