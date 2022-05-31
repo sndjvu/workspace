@@ -265,60 +265,14 @@ impl<'a> Dirm<'a> {
         todo!()
     }
 
-    pub fn parse_decoded_extra<'dec>(&self, decoded: &'dec [u8]) -> Result<DirmExtra<'dec>, Error> {
+    pub fn parse_decoded_extra<'dec>(&self, decoded: &'dec [u8]) -> Result<alloc::vec::Vec<ComponentMeta<'dec>>, Error> {
         todo!()
-    }
-}
-
-pub struct DirmExtra<'a> {
-    lens: &'a [ComponentLen],
-    flagses: &'a [u8],
-    strings: &'a [u8],
-}
-
-impl<'a> DirmExtra<'a> {
-    pub fn iter(&self) -> DirmExtraIter<'a> {
-        todo!()
-    }
-}
-
-pub struct DirmExtraIter<'a> {
-    lens: core::slice::Iter<'a, ComponentLen>,
-    flagses: core::slice::Iter<'a, u8>,
-    strings: &'a [u8],
-}
-
-impl<'a> Iterator for DirmExtraIter<'a> {
-    type Item = ComponentMeta<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
-    }
-}
-
-#[repr(transparent)]
-struct ComponentLen([u8; 3]);
-
-impl ComponentLen {
-    fn cast_slice(arrays: &[[u8; 3]]) -> &[Self] {
-        // SAFETY ComponentLen is repr(transparent)
-        unsafe {
-            core::slice::from_raw_parts(
-                arrays.as_ptr().cast(),
-                arrays.len(),
-            )
-        }
-    }
-
-    fn get(self) -> u32 {
-        let [x, y, z] = self.0;
-        u32::from_be_bytes([0, x, y, z])
     }
 }
 
 pub struct ComponentMeta<'a> {
-    pub kind: crate::ComponentKind,
     pub len: u32,
+    pub kind: crate::ComponentKind,
     pub id: &'a [u8],
     pub name: Option<&'a [u8]>,
     pub title: Option<&'a [u8]>,
