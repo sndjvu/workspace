@@ -205,18 +205,124 @@ fn is_potential_chunk_id(xs: [u8; 4]) -> bool {
 
 /// Parsed representation of an element of a page.
 pub enum Element<'a> {
+    Anta(AntaChunk<'a>),
+    Antz(AntzChunk<'a>),
+    Txta(TxtaChunk<'a>),
+    Txtz(TxtzChunk<'a>),
+    Djbz(Djbz<'a>),
+    Sjbz(Sjbz<'a>),
+    Fg44(Fg44Chunk<'a>),
+    Bg44(Bg44Chunk<'a>),
+    Fgbz(FgbzChunk<'a>),
     Incl(Incl<'a>),
+    Bgjp(Bgjp<'a>),
+    Fgjp(Fgjp<'a>),
+    Smmr(SmmrChunk<'a>),
+    Unknown(Chunk<'a>),
 }
 
 impl<'a> Element<'a> {
     pub fn after(&self) -> ElementP {
         match *self {
-            Self::Incl(Incl { after_pos, end_pos, .. }) => ElementP::new(after_pos, end_pos),
+            Self::Anta(AntaChunk { after_pos, end_pos, .. })
+            | Self::Antz(AntzChunk { after_pos, end_pos, .. })
+            | Self::Txta(TxtaChunk { after_pos, end_pos, .. })
+            | Self::Txtz(TxtzChunk { after_pos, end_pos, .. })
+            | Self::Djbz(Djbz { after_pos, end_pos, .. })
+            | Self::Sjbz(Sjbz { after_pos, end_pos, .. })
+            | Self::Fg44(Fg44Chunk { after_pos, end_pos, .. })
+            | Self::Bg44(Bg44Chunk { after_pos, end_pos, .. })
+            | Self::Fgbz(FgbzChunk { after_pos, end_pos, .. })
+            | Self::Incl(Incl { after_pos, end_pos, .. })
+            | Self::Bgjp(Bgjp { after_pos, end_pos, .. })
+            | Self::Fgjp(Fgjp { after_pos, end_pos, .. })
+            | Self::Smmr(SmmrChunk { after_pos, end_pos, .. })
+            | Self::Unknown(Chunk { after_pos, end_pos, .. })
+                => ElementP::new(after_pos, end_pos),
         }
     }
 }
 
+pub struct AntaChunk<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct AntzChunk<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct TxtaChunk<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct TxtzChunk<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct Djbz<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct Sjbz<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct Fg44Chunk<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct Bg44Chunk<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct FgbzChunk<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
 pub struct Incl<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct Bgjp<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct Fgjp<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct SmmrChunk<'a> {
+    content: Field<'a>,
+    after_pos: Pos,
+    end_pos: Pos,
+}
+
+pub struct Chunk<'a> {
+    kind: [u8; 4],
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
