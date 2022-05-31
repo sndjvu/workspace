@@ -297,6 +297,88 @@ pub struct FgbzChunk<'a> {
     end_pos: Pos,
 }
 
+impl<'a> FgbzChunk<'a> {
+    pub fn parse(&self) -> Result<Fgbz<'a>, Error> {
+        let mut s = self.content.split();
+        let byte = s.byte()?;
+        let has_indices = byte & (1 << 7) != 0;
+        let version = crate::FgbzVersion(byte & 0b0111_1111);
+        let num_entries = s.u16_be()?;
+        let raw_palette = s.slice_of_arrays(num_entries as usize)?;
+        let palette = PaletteEntry::cast_slice(raw_palette);
+        let indices = if has_indices {
+            Some(FgbzIndices { content: s.rest() })
+        } else {
+            None
+        };
+        Ok(Fgbz {
+            version,
+            palette,
+            indices,
+        })
+    }
+}
+
+pub struct Fgbz<'a> {
+    pub version: crate::FgbzVersion,
+    pub palette: &'a [PaletteEntry],
+    pub indices: Option<FgbzIndices<'a>>,
+}
+
+pub struct FgbzIndices<'a> {
+    content: Field<'a>,
+}
+
+impl<'a> FgbzIndices<'a> {
+    pub fn bzz(&self) -> &'a [u8] {
+        todo!()
+    }
+
+    pub fn parse_decoded<'dec>(&self, decoded: &'dec [u8]) -> Result<&'dec [PaletteIndex], Error> {
+        let mut s = self.content.split_decoded(decoded);
+        let num_indices = s.u24_be()?;
+        let raw_indices = s.slice_of_arrays(num_indices as usize)?;
+        let indices = PaletteIndex::cast_slice(raw_indices);
+        Ok(indices)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct PaletteEntry {
+    pub b: u8,
+    pub g: u8,
+    pub r: u8,
+}
+
+impl PaletteEntry {
+    fn cast_slice(arrays: &[[u8; 3]]) -> &[Self] {
+        // SAFETY PaletteEntry is repr(C) with the same layout as [u8; 3]
+        unsafe {
+            core::slice::from_raw_parts(
+                arrays.as_ptr().cast(),
+                arrays.len(),
+            )
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(transparent)]
+pub struct PaletteIndex([u8; 2]);
+
+impl PaletteIndex {
+    fn cast_slice(arrays: &[[u8; 2]]) -> &[Self] {
+        // SAFETY PaletteIndex is repr(transparent)
+        unsafe {
+            core::slice::from_raw_parts(
+                arrays.as_ptr().cast(),
+                arrays.len(),
+            )
+        }
+    }
+}
+
 pub struct Incl<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -764,6 +846,10 @@ impl<'a> Field<'a> {
             by: 0,
         }
     }
+
+    fn split_decoded<'dec>(self, decoded: &'dec [u8]) -> SplitInner<'dec> {
+        todo!()
+    }
 }
 
 struct SplitInner<'a> {
@@ -808,6 +894,11 @@ impl<'a> SplitInner<'a> {
     fn u16_le(&mut self) -> Result<u16, Error> {
         let &xs = self.array()?;
         Ok(u16::from_le_bytes(xs))
+    }
+
+    fn u24_be(&mut self) -> Result<u32, Error> {
+        let &[x, y, z] = self.array()?;
+        Ok(u32::from_be_bytes([0, x, y, z]))
     }
 
     fn rest(self) -> Field<'a> {
