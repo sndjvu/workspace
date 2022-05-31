@@ -261,10 +261,122 @@ pub struct TxtaChunk<'a> {
     end_pos: Pos,
 }
 
+impl<'a> TxtaChunk<'a> {
+    pub fn parse(&self) -> Result<Txt<'a>, Error> {
+        Txt::parse_from(self.content.split())
+    }
+}
+
 pub struct TxtzChunk<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
+}
+
+impl<'a> TxtzChunk<'a> {
+    pub fn bzz(&self) -> &'a [u8] {
+        todo!()
+    }
+
+    pub fn parse_decoded<'dec>(&self, decoded: &'dec [u8]) -> Result<Txt<'dec>, Error> {
+        Txt::parse_from(self.content.split_decoded(decoded))
+    }
+}
+
+pub struct Txt<'a> {
+    pub text: &'a [u8],
+    pub version: crate::TxtVersion,
+    pub zones: &'a [Zone],
+}
+
+impl<'a> Txt<'a> {
+    pub fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
+        let len = s.u24_be()?;
+        let text = s.slice(len as usize)?;
+        let version = s.byte().map(crate::TxtVersion)?;
+        let raw_zones = s.rest_arrays()?;
+        let zones = Zone::cast_slice(raw_zones)?;
+        Ok(Txt {
+            text,
+            version,
+            zones,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct Zone {
+    kind: u8,
+    x_offset: [u8; 2],
+    y_offset: [u8; 2],
+    width: [u8; 2],
+    height: [u8; 2],
+    _empty: [u8; 2],
+    text_len: [u8; 3],
+    num_children: [u8; 3],
+}
+
+fn cvt_zone_i16(bytes: [u8; 2]) -> i16 {
+    i16::from_be_bytes(bytes) ^ (1 << 15)
+}
+
+impl Zone {
+    fn cast_slice(arrays: &[[u8; 17]]) -> Result<&[Self], Error> {
+        for &[x, ..] in arrays {
+            if !(1..=7).contains(&x) {
+                return Err(Error {});
+            }
+        }
+        // SAFETY Zone has the same layout as [u8; 17], and we've checked that the kind
+        // fields have valid values
+        let zones = unsafe {
+            core::slice::from_raw_parts(
+                arrays.as_ptr().cast(),
+                arrays.len(),
+            )
+        };
+        Ok(zones)
+    }
+
+    pub fn kind(self) -> crate::ZoneKind {
+        match self.kind {
+            1 => crate::ZoneKind::Page,
+            2 => crate::ZoneKind::Column,
+            3 => crate::ZoneKind::Region,
+            4 => crate::ZoneKind::Paragraph,
+            5 => crate::ZoneKind::Line,
+            6 => crate::ZoneKind::Word,
+            7 => crate::ZoneKind::Character,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn x_offset(self) -> i16 {
+        cvt_zone_i16(self.x_offset)
+    }
+
+    pub fn y_offset(self) -> i16 {
+        cvt_zone_i16(self.y_offset)
+    }
+
+    pub fn width(self) -> i16 {
+        cvt_zone_i16(self.width)
+    }
+
+    pub fn height(self) -> i16 {
+        cvt_zone_i16(self.height)
+    }
+
+    pub fn text_len(self) -> u32 {
+        let [b1, b2, b3] = self.text_len;
+        u32::from_be_bytes([0, b1, b2, b3])
+    }
+
+    pub fn num_children(self) -> u32 {
+        let [b1, b2, b3] = self.num_children;
+        u32::from_be_bytes([0, b1, b2, b3])
+    }
 }
 
 pub struct Djbz<'a> {
@@ -445,6 +557,7 @@ pub struct Dirm<'a> {
     pub version: crate::DirmVersion,
     pub num_components: u16,
     pub bundled: Option<Bundled<'a>>,
+    // FIXME maybe this should have its own struct, like FgbzIndices?
     bzz: Field<'a>,
 }
 
@@ -454,10 +567,48 @@ impl<'a> Dirm<'a> {
     }
 
     pub fn parse_decoded_extra<'dec>(&self, decoded: &'dec [u8]) -> Result<alloc::vec::Vec<ComponentMeta<'dec>>, Error> {
-        todo!()
+        let mut s = self.bzz.split_decoded(decoded);
+        let init_meta = ComponentMeta {
+            len: 0,
+            kind: crate::ComponentKind::Djvi,
+            id: b"",
+            name: None,
+            title: None,
+        };
+        let mut meta = alloc::vec![init_meta; self.num_components as usize];
+
+        for entry in &mut meta {
+            entry.len = s.u24_be()?;
+        }
+        for entry in &mut meta {
+            let flags = s.byte()?;
+            if flags & (1 << 7) != 0 {
+                entry.name = Some(b"");
+            }
+            if flags & (1 << 6) != 0 {
+                entry.title = Some(b"");
+            }
+            entry.kind = match flags & 0b0011_1111 {
+                0 => crate::ComponentKind::Djvi,
+                1 => crate::ComponentKind::Djvu,
+                2 => crate::ComponentKind::Thum,
+                _ => return Err(Error {}),
+            }
+        }
+        for entry in &mut meta {
+            entry.id = s.zstr()?;
+            if let Some(ref mut name) = entry.name {
+                *name = s.zstr()?;
+            }
+            if let Some(ref mut title) = entry.title {
+                *title = s.zstr()?;
+            }
+        }
+        Ok(meta)
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct ComponentMeta<'a> {
     pub len: u32,
     pub kind: crate::ComponentKind,
@@ -881,6 +1032,14 @@ impl<'a> SplitInner<'a> {
         }
     }
 
+    fn slice(&mut self, n: usize) -> Result<&'a [u8], Error> {
+        todo!()
+    }
+
+    fn zstr(&mut self) -> Result<&'a [u8], Error> {
+        todo!()
+    }
+
     fn byte(&mut self) -> Result<u8, Error> {
         let &[x] = self.array()?;
         Ok(x)
@@ -908,5 +1067,9 @@ impl<'a> SplitInner<'a> {
             start_pos: self.parent.start_pos + self.by,
             end: self.parent.end,
         }
+    }
+
+    fn rest_arrays<const N: usize>(self) -> Result<&'a [[u8; N]], Error> {
+        todo!()
     }
 }

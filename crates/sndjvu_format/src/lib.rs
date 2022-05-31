@@ -54,6 +54,7 @@ impl DirmVersion {
     pub const CURRENT: Self = Self(1);
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum ComponentKind {
     Djvi,
     Djvu,
