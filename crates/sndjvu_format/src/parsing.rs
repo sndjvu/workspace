@@ -803,16 +803,23 @@ impl ElementP {
         let mut s = split_outer(data, self.pos, Some(self.end_pos));
         let s = &mut s;
         let (kind, content) = try_advance!(s.chunk()?);
+        let after_pos = s.pos();
+        let end_pos = self.end_pos;
         let element = match &kind {
-            b"INCL" => {
-                let incl = Incl {
-                    content,
-                    after_pos: s.pos(),
-                    end_pos: self.end_pos
-                };
-                Element::Incl(incl)
-            }
-            _ => return Err(Error {}),
+            b"ANTa" => Element::Anta(AntaChunk { content, after_pos, end_pos }),
+            b"ANTz" => Element::Antz(AntzChunk { content, after_pos, end_pos }),
+            b"ANTa" => Element::Txta(TxtaChunk { content, after_pos, end_pos }),
+            b"ANTz" => Element::Txtz(TxtzChunk { content, after_pos, end_pos }),
+            b"Djbz" => Element::Djbz(Djbz { content, after_pos, end_pos }),
+            b"Sjbz" => Element::Sjbz(Sjbz { content, after_pos, end_pos }),
+            b"FG44" => Element::Fg44(Fg44Chunk { content, after_pos, end_pos }),
+            b"BG44" => Element::Bg44(Bg44Chunk { content, after_pos, end_pos }),
+            b"FGbz" => Element::Fgbz(FgbzChunk { content, after_pos, end_pos }),
+            b"INCL" => Element::Incl(Incl { content, after_pos, end_pos }),
+            b"BGjp" => Element::Bgjp(Bgjp { content, after_pos, end_pos }),
+            b"FGjp" => Element::Fgjp(Fgjp { content, after_pos, end_pos }),
+            b"Smmr" => Element::Smmr(SmmrChunk { content, after_pos, end_pos }),
+            _ => Element::Unknown(Chunk { kind, content, after_pos, end_pos }),
         };
         Ok(advanced(element, s))
     }
