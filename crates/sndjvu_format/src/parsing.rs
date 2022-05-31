@@ -203,75 +203,75 @@ fn is_potential_chunk_id(xs: [u8; 4]) -> bool {
 
 /// Parsed representation of an element of a page.
 pub enum Element<'a> {
-    Anta(AntaChunk<'a>),
-    Antz(AntzChunk<'a>),
-    Txta(TxtaChunk<'a>),
-    Txtz(TxtzChunk<'a>),
-    Djbz(Djbz<'a>),
-    Sjbz(Sjbz<'a>),
-    Fg44(Fg44Chunk<'a>),
-    Bg44(Bg44Chunk<'a>),
-    Fgbz(FgbzChunk<'a>),
-    Incl(Incl<'a>),
-    Bgjp(Bgjp<'a>),
-    Fgjp(Fgjp<'a>),
-    Smmr(SmmrChunk<'a>),
+    Anta(RawAnta<'a>),
+    Antz(RawAntz<'a>),
+    Txta(RawTxta<'a>),
+    Txtz(RawTxtz<'a>),
+    Djbz(RawDjbz<'a>),
+    Sjbz(RawSjbz<'a>),
+    Fg44(RawFg44<'a>),
+    Bg44(RawBg44<'a>),
+    Fgbz(RawFgbz<'a>),
+    Incl(RawIncl<'a>),
+    Bgjp(RawBgjp<'a>),
+    Fgjp(RawFgjp<'a>),
+    Smmr(RawSmmr<'a>),
     Unknown(Chunk<'a>),
 }
 
 impl<'a> Element<'a> {
     pub fn after(&self) -> ElementP {
         match *self {
-            Self::Anta(AntaChunk { after_pos, end_pos, .. })
-            | Self::Antz(AntzChunk { after_pos, end_pos, .. })
-            | Self::Txta(TxtaChunk { after_pos, end_pos, .. })
-            | Self::Txtz(TxtzChunk { after_pos, end_pos, .. })
-            | Self::Djbz(Djbz { after_pos, end_pos, .. })
-            | Self::Sjbz(Sjbz { after_pos, end_pos, .. })
-            | Self::Fg44(Fg44Chunk { after_pos, end_pos, .. })
-            | Self::Bg44(Bg44Chunk { after_pos, end_pos, .. })
-            | Self::Fgbz(FgbzChunk { after_pos, end_pos, .. })
-            | Self::Incl(Incl { after_pos, end_pos, .. })
-            | Self::Bgjp(Bgjp { after_pos, end_pos, .. })
-            | Self::Fgjp(Fgjp { after_pos, end_pos, .. })
-            | Self::Smmr(SmmrChunk { after_pos, end_pos, .. })
+            Self::Anta(RawAnta { after_pos, end_pos, .. })
+            | Self::Antz(RawAntz { after_pos, end_pos, .. })
+            | Self::Txta(RawTxta { after_pos, end_pos, .. })
+            | Self::Txtz(RawTxtz { after_pos, end_pos, .. })
+            | Self::Djbz(RawDjbz { after_pos, end_pos, .. })
+            | Self::Sjbz(RawSjbz { after_pos, end_pos, .. })
+            | Self::Fg44(RawFg44 { after_pos, end_pos, .. })
+            | Self::Bg44(RawBg44 { after_pos, end_pos, .. })
+            | Self::Fgbz(RawFgbz { after_pos, end_pos, .. })
+            | Self::Incl(RawIncl { after_pos, end_pos, .. })
+            | Self::Bgjp(RawBgjp { after_pos, end_pos, .. })
+            | Self::Fgjp(RawFgjp { after_pos, end_pos, .. })
+            | Self::Smmr(RawSmmr { after_pos, end_pos, .. })
             | Self::Unknown(Chunk { after_pos, end_pos, .. })
                 => ElementP::new(after_pos, end_pos),
         }
     }
 }
 
-pub struct AntaChunk<'a> {
+pub struct RawAnta<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-pub struct AntzChunk<'a> {
+pub struct RawAntz<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-pub struct TxtaChunk<'a> {
+pub struct RawTxta<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-impl<'a> TxtaChunk<'a> {
+impl<'a> RawTxta<'a> {
     pub fn parse(&self) -> Result<Txt<'a>, Error> {
         Txt::parse_from(self.content.split())
     }
 }
 
-pub struct TxtzChunk<'a> {
+pub struct RawTxtz<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-impl<'a> TxtzChunk<'a> {
+impl<'a> RawTxtz<'a> {
     pub fn bzz(&self) -> &'a [u8] {
         todo!()
     }
@@ -378,37 +378,37 @@ impl Zone {
     }
 }
 
-pub struct Djbz<'a> {
+pub struct RawDjbz<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-pub struct Sjbz<'a> {
+pub struct RawSjbz<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-pub struct Fg44Chunk<'a> {
+pub struct RawFg44<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-impl<'a> Fg44Chunk<'a> {
+impl<'a> RawFg44<'a> {
     pub fn parse(&self) -> Result<Iw44<'a>, Error> {
         Iw44::parse_from(self.content.split())
     }
 }
 
-pub struct Bg44Chunk<'a> {
+pub struct RawBg44<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-impl<'a> Bg44Chunk<'a> {
+impl<'a> RawBg44<'a> {
     pub fn parse(&self) -> Result<Iw44<'a>, Error> {
         Iw44::parse_from(self.content.split())
     }
@@ -468,13 +468,13 @@ pub enum Iw44Kind {
     Tail { serial: NonZeroU8 },
 }
 
-pub struct FgbzChunk<'a> {
+pub struct RawFgbz<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-impl<'a> FgbzChunk<'a> {
+impl<'a> RawFgbz<'a> {
     pub fn parse(&self) -> Result<Fgbz<'a>, Error> {
         let mut s = self.content.split();
         let byte = s.byte()?;
@@ -556,25 +556,25 @@ impl PaletteIndex {
     }
 }
 
-pub struct Incl<'a> {
+pub struct RawIncl<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-pub struct Bgjp<'a> {
+pub struct RawBgjp<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-pub struct Fgjp<'a> {
+pub struct RawFgjp<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-pub struct SmmrChunk<'a> {
+pub struct RawSmmr<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
@@ -806,19 +806,19 @@ impl ElementP {
         let after_pos = s.pos();
         let end_pos = self.end_pos;
         let element = match &kind {
-            b"ANTa" => Element::Anta(AntaChunk { content, after_pos, end_pos }),
-            b"ANTz" => Element::Antz(AntzChunk { content, after_pos, end_pos }),
-            b"ANTa" => Element::Txta(TxtaChunk { content, after_pos, end_pos }),
-            b"ANTz" => Element::Txtz(TxtzChunk { content, after_pos, end_pos }),
-            b"Djbz" => Element::Djbz(Djbz { content, after_pos, end_pos }),
-            b"Sjbz" => Element::Sjbz(Sjbz { content, after_pos, end_pos }),
-            b"FG44" => Element::Fg44(Fg44Chunk { content, after_pos, end_pos }),
-            b"BG44" => Element::Bg44(Bg44Chunk { content, after_pos, end_pos }),
-            b"FGbz" => Element::Fgbz(FgbzChunk { content, after_pos, end_pos }),
-            b"INCL" => Element::Incl(Incl { content, after_pos, end_pos }),
-            b"BGjp" => Element::Bgjp(Bgjp { content, after_pos, end_pos }),
-            b"FGjp" => Element::Fgjp(Fgjp { content, after_pos, end_pos }),
-            b"Smmr" => Element::Smmr(SmmrChunk { content, after_pos, end_pos }),
+            b"ANTa" => Element::Anta(RawAnta { content, after_pos, end_pos }),
+            b"ANTz" => Element::Antz(RawAntz { content, after_pos, end_pos }),
+            b"ANTa" => Element::Txta(RawTxta { content, after_pos, end_pos }),
+            b"ANTz" => Element::Txtz(RawTxtz { content, after_pos, end_pos }),
+            b"Djbz" => Element::Djbz(RawDjbz { content, after_pos, end_pos }),
+            b"Sjbz" => Element::Sjbz(RawSjbz { content, after_pos, end_pos }),
+            b"FG44" => Element::Fg44(RawFg44 { content, after_pos, end_pos }),
+            b"BG44" => Element::Bg44(RawBg44 { content, after_pos, end_pos }),
+            b"FGbz" => Element::Fgbz(RawFgbz { content, after_pos, end_pos }),
+            b"INCL" => Element::Incl(RawIncl { content, after_pos, end_pos }),
+            b"BGjp" => Element::Bgjp(RawBgjp { content, after_pos, end_pos }),
+            b"FGjp" => Element::Fgjp(RawFgjp { content, after_pos, end_pos }),
+            b"Smmr" => Element::Smmr(RawSmmr { content, after_pos, end_pos }),
             _ => Element::Unknown(Chunk { kind, content, after_pos, end_pos }),
         };
         Ok(advanced(element, s))
