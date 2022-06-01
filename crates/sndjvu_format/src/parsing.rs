@@ -295,7 +295,7 @@ pub struct Txt<'a> {
 }
 
 impl<'a> Txt<'a> {
-    pub fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
+    fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
         let len = s.u24_be()?;
         let text = s.slice(len as usize)?;
         let version = s.byte().map(crate::TxtVersion)?;
@@ -851,8 +851,8 @@ impl ElementP {
         let element = match &kind {
             b"ANTa" => Element::Anta(RawAnta { content, after_pos, end_pos }),
             b"ANTz" => Element::Antz(RawAntz { content, after_pos, end_pos }),
-            b"ANTa" => Element::Txta(RawTxta { content, after_pos, end_pos }),
-            b"ANTz" => Element::Txtz(RawTxtz { content, after_pos, end_pos }),
+            b"TXTa" => Element::Txta(RawTxta { content, after_pos, end_pos }),
+            b"TXTz" => Element::Txtz(RawTxtz { content, after_pos, end_pos }),
             b"Djbz" => Element::Djbz(RawDjbz { content, after_pos, end_pos }),
             b"Sjbz" => Element::Sjbz(RawSjbz { content, after_pos, end_pos }),
             b"FG44" => Element::Fg44(RawFg44 { content, after_pos, end_pos }),
