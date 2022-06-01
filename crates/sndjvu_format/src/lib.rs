@@ -24,6 +24,10 @@ pub struct Iw44Version {
 
 impl Iw44Version {
     pub const CURRENT: Self = Self { major: 1, minor: 2 };
+
+    fn pack(self, color_space: Iw44ColorSpace) -> [u8; 2] {
+        todo!()
+    }
 }
 
 pub struct FgbzVersion(u8);
@@ -39,6 +43,10 @@ pub struct InfoVersion {
 
 impl InfoVersion {
     pub const CURRENT: Self = Self { major: 0, minor: 26 };
+
+    fn pack(self) -> [u8; 2] {
+        todo!()
+    }
 }
 
 pub enum PageRotation {
@@ -52,6 +60,15 @@ pub struct DirmVersion(u8);
 
 impl DirmVersion {
     pub const CURRENT: Self = Self(1);
+
+    fn pack(self, is_bundled: IsBundled) -> [u8; 1] {
+        todo!()
+    }
+}
+
+enum IsBundled {
+    No,
+    Yes,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -59,6 +76,16 @@ pub enum ComponentKind {
     Djvi,
     Djvu,
     Thum,
+}
+
+impl ComponentKind {
+    fn name(&self) -> &'static [u8; 4] {
+        match self {
+            Self::Djvi => b"DJVI",
+            Self::Djvu => b"DJVU",
+            Self::Thum => b"THUM",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -80,6 +107,13 @@ pub enum Iw44ColorSpace {
 
 pub struct Cdc(u8);
 
-pub mod parsing;
+impl Cdc {
+    pub fn get(self) -> u8 {
+        self.0
+    }
+}
+
 pub mod annot;
+pub mod parsing;
+pub mod ser;
 pub(crate) mod shim;
