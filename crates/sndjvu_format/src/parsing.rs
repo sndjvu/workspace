@@ -253,6 +253,12 @@ pub struct RawAntz<'a> {
     end_pos: Pos,
 }
 
+impl<'a> RawAntz<'a> {
+    pub fn bzz(&self) -> &'a [u8] {
+        self.content.bytes()
+    }
+}
+
 pub struct RawTxta<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -273,7 +279,7 @@ pub struct RawTxtz<'a> {
 
 impl<'a> RawTxtz<'a> {
     pub fn bzz(&self) -> &'a [u8] {
-        todo!()
+        self.content.bytes()
     }
 
     pub fn parse_decoded<'dec>(&self, decoded: &'dec [u8]) -> Result<Txt<'dec>, Error> {
@@ -375,10 +381,22 @@ pub struct RawDjbz<'a> {
     end_pos: Pos,
 }
 
+impl<'a> RawDjbz<'a> {
+    pub fn bytes(&self) -> &'a [u8] {
+        self.content.bytes()
+    }
+}
+
 pub struct RawSjbz<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
+}
+
+impl<'a> RawSjbz<'a> {
+    pub fn bytes(&self) -> &'a [u8] {
+        self.content.bytes()
+    }
 }
 
 pub struct RawFg44<'a> {
@@ -448,6 +466,10 @@ impl<'a> Iw44<'a> {
             rest,
         })
     }
+
+    pub fn data(&self) -> &'a [u8] {
+        self.rest.bytes()
+    }
 }
 
 pub enum Iw44Kind {
@@ -501,7 +523,7 @@ pub struct FgbzIndices<'a> {
 
 impl<'a> FgbzIndices<'a> {
     pub fn bzz(&self) -> &'a [u8] {
-        todo!()
+        self.content.bytes()
     }
 
     pub fn parse_decoded<'dec>(&self, decoded: &'dec [u8]) -> Result<&'dec [PaletteIndex], Error> {
@@ -555,16 +577,34 @@ pub struct RawIncl<'a> {
     end_pos: Pos,
 }
 
+impl<'a> RawIncl<'a> {
+    pub fn target_id(&self) -> &'a [u8] {
+        self.content.bytes()
+    }
+}
+
 pub struct RawBgjp<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
+impl<'a> RawBgjp<'a> {
+    pub fn bytes(&self) -> &'a [u8] {
+        self.content.bytes()
+    }
+}
+
 pub struct RawFgjp<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
+}
+
+impl<'a> RawFgjp<'a> {
+    pub fn bytes(&self) -> &'a [u8] {
+        self.content.bytes()
+    }
 }
 
 pub struct RawSmmr<'a> {
@@ -578,6 +618,16 @@ pub struct Chunk<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
+}
+
+impl<'a> Chunk<'a> {
+    pub fn kind(&self) -> [u8; 4] {
+        self.kind
+    }
+
+    pub fn content(&self) -> &'a [u8] {
+        self.content.bytes()
+    }
 }
 
 pub struct DirmChunk<'a> {
@@ -621,7 +671,7 @@ pub struct Dirm<'a> {
 
 impl<'a> Dirm<'a> {
     pub fn bzz_extra(&self) -> &'a [u8] {
-        todo!()
+        self.bzz.bytes()
     }
 
     pub fn parse_decoded_extra<'dec>(&self, decoded: &'dec [u8]) -> Result<alloc::vec::Vec<ComponentMeta<'dec>>, Error> {
@@ -1056,6 +1106,10 @@ struct Field<'a> {
 }
 
 impl<'a> Field<'a> {
+    fn bytes(&self) -> &'a [u8] {
+        &self.full[self.start..self.end]
+    }
+
     fn split(self) -> SplitInner<'a> {
         SplitInner {
             parent: self,
