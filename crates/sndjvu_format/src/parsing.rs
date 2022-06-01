@@ -981,8 +981,8 @@ impl<'a> SplitOuter<'a> {
     }
 
     fn header<const N: usize>(&mut self) -> ProgressInternal<&'a [[u8; 4]; N]> {
-        let (arrays, _) = crate::shim::as_arrays(self.remaining());
-        match crate::shim::split_array(arrays) {
+        let (arrays, _) = crate::shim::slice_as_arrays(self.remaining());
+        match crate::shim::slice_split_array(arrays) {
             None => ProgressInternal::None(Some(4 * N)),
             Some((header, _)) => {
                 self.by += 4 * N as u32; // XXX
@@ -1133,7 +1133,7 @@ impl<'a> SplitInner<'a> {
     }
 
     fn array<const N: usize>(&mut self) -> Result<&'a [u8; N], Error> {
-        if let Some((array, _)) = crate::shim::split_array(self.remaining()) {
+        if let Some((array, _)) = crate::shim::slice_split_array(self.remaining()) {
             self.by += N as u32; // XXX
             Ok(array)
         } else {
@@ -1142,7 +1142,7 @@ impl<'a> SplitInner<'a> {
     }
 
     fn slice_of_arrays<const N: usize>(&mut self, n: usize) -> Result<&'a [[u8; N]], Error> {
-        let (arrays, _) = crate::shim::as_arrays(self.remaining());
+        let (arrays, _) = crate::shim::slice_as_arrays(self.remaining());
         if let Some(arrays) = arrays.get(..n) {
             self.by += n as u32 * N as u32; // XXX
             Ok(arrays)
@@ -1200,7 +1200,7 @@ impl<'a> SplitInner<'a> {
     }
 
     fn rest_arrays<const N: usize>(self) -> Result<&'a [[u8; N]], Error> {
-        let (arrays, rest) = crate::shim::as_arrays(self.remaining());
+        let (arrays, rest) = crate::shim::slice_as_arrays(self.remaining());
         if rest.is_empty() {
             Ok(arrays)
         } else {
