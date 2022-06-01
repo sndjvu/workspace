@@ -306,7 +306,7 @@ impl<'a> Txt<'a> {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Zone {
-    kind: u8,
+    kind: crate::ZoneKind,
     x_offset: [u8; 2],
     y_offset: [u8; 2],
     width: [u8; 2],
@@ -339,16 +339,7 @@ impl Zone {
     }
 
     pub fn kind(self) -> crate::ZoneKind {
-        match self.kind {
-            1 => crate::ZoneKind::Page,
-            2 => crate::ZoneKind::Column,
-            3 => crate::ZoneKind::Region,
-            4 => crate::ZoneKind::Paragraph,
-            5 => crate::ZoneKind::Line,
-            6 => crate::ZoneKind::Word,
-            7 => crate::ZoneKind::Character,
-            _ => unreachable!(),
-        }
+        self.kind
     }
 
     pub fn x_offset(self) -> i16 {
@@ -414,6 +405,8 @@ impl<'a> RawBg44<'a> {
     }
 }
 
+// FIXME it's not grammatical for a FG44 chunk or TH44 chunk to have kind Tail
+// and the parser should probably reflect that?
 pub struct Iw44<'a> {
     // FIXME this should have a content field?
     pub kind: Iw44Kind,
@@ -596,7 +589,7 @@ impl<'a> DirmChunk<'a> {
     pub fn parse(&self) -> Result<Dirm<'a>, Error> {
         let mut s = self.content.split();
         let flags = s.byte()?;
-        let is_bundled = flags >> 7 != 0;
+        let is_bundled = flags & (1 << 7) != 0;
         let version = crate::DirmVersion(flags & 0b0111_1111);
         let num_components = s.u16_be()?;
         let bundled = if is_bundled {

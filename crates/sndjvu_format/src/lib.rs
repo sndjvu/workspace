@@ -61,6 +61,8 @@ pub enum ComponentKind {
     Thum,
 }
 
+#[derive(Clone, Copy, Debug)]
+#[repr(u8)]
 pub enum ZoneKind {
     Page = 1,
     Column,
