@@ -81,4 +81,5 @@ pub enum Iw44ColorSpace {
 pub struct Cdc(u8);
 
 pub mod parsing;
+pub mod annot;
 pub(crate) mod shim;
