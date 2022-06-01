@@ -1152,11 +1152,22 @@ impl<'a> SplitInner<'a> {
     }
 
     fn slice(&mut self, n: usize) -> Result<&'a [u8], Error> {
-        todo!()
+        if let Some(slice) = self.remaining().get(..n) {
+            self.by += n as u32; // XXX
+            Ok(slice)
+        } else {
+            Err(Error {})
+        }
     }
 
     fn zstr(&mut self) -> Result<&'a [u8], Error> {
-        todo!()
+        if let Some(i) = self.remaining().iter().position(|&x| x == b'\0') {
+            let s = &self.remaining()[..i]; // XXX
+            self.by += i as u32 + 1;
+            Ok(s)
+        } else {
+            Err(Error {})
+        }
     }
 
     fn byte(&mut self) -> Result<u8, Error> {
@@ -1189,6 +1200,11 @@ impl<'a> SplitInner<'a> {
     }
 
     fn rest_arrays<const N: usize>(self) -> Result<&'a [[u8; N]], Error> {
-        todo!()
+        let (arrays, rest) = crate::shim::as_arrays(self.remaining());
+        if rest.is_empty() {
+            Ok(arrays)
+        } else {
+            Err(Error {})
+        }
     }
 }
