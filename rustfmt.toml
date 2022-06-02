@@ -1,0 +1,2 @@
+# this project doesn't use rustfmt
+disable_all_formatting = true
