@@ -1114,17 +1114,29 @@ impl<'a> Field<'a> {
         SplitInner {
             parent: self,
             by: 0,
+            bzz: None,
         }
     }
 
     fn split_decoded<'dec>(self, decoded: &'dec [u8]) -> SplitInner<'dec> {
-        todo!()
+        let parent = Field {
+            full: decoded,
+            start: 0,
+            start_pos: 0,
+            end: decoded.len(),
+        };
+        SplitInner {
+            parent,
+            by: 0,
+            bzz: Some((self.start_pos, self.start_pos + (self.end - self.start) as u32)),
+        }
     }
 }
 
 struct SplitInner<'a> {
     parent: Field<'a>,
     by: u32,
+    bzz: Option<(Pos, Pos)>,
 }
 
 impl<'a> SplitInner<'a> {
