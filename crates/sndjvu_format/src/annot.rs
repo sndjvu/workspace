@@ -6,18 +6,18 @@ use alloc::vec::Vec;
 pub struct Key(String);
 
 impl Display for Key {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> core::fmt::Result {
         todo!()
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Quoted {
-    data: Vec<u8>,
+    _data: Vec<u8>,
 }
 
 impl Display for Quoted {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> core::fmt::Result {
         todo!()
     }
 }
@@ -33,7 +33,7 @@ pub struct MarginStrings {
 struct Displayable<T>(T);
 
 impl<'a> Display for Displayable<&'a MarginStrings> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> core::fmt::Result {
         todo!()
     }
 }
@@ -162,17 +162,11 @@ pub enum LinkDest {
     Internal(Quoted),
 }
 
-impl LinkDest {
-    fn parse(raw: Quoted) -> Self {
-        todo!()
-    }
-}
-
 impl Display for LinkDest {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match *self {
             Self::External(ref s) => write!(f, "{s}"),
-            Self::Internal(ref s) => todo!(),
+            Self::Internal(ref _s) => todo!(),
         }
     }
 }
@@ -471,20 +465,8 @@ impl Maparea {
         &self.shape
     }
 
-    pub(crate) fn shape_mut(&mut self) -> &mut Shape {
-        &mut self.shape
-    }
-
     pub fn border(&self) -> Border {
         self.border
-    }
-
-    pub(crate) fn border_mut(&mut self) -> &mut Border {
-        &mut self.border
-    }
-
-    pub(crate) fn basic(link: Link, comment: Quoted, shape: Shape) -> Self {
-        Self { link, comment, shape, border: Border::default() }
     }
 }
 

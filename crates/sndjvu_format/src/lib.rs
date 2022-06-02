@@ -67,6 +67,7 @@ impl DirmVersion {
 }
 
 enum IsBundled {
+    #[allow(unused)]
     No,
     Yes,
 }

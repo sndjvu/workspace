@@ -160,7 +160,7 @@ pub struct InfoChunk<'a> {
 }
 
 pub struct Info<'a> {
-    content: Field<'a>,
+    _content: Field<'a>,
     pub width: u16,
     pub height: u16,
     pub version: crate::InfoVersion,
@@ -186,7 +186,7 @@ impl<'a> InfoChunk<'a> {
             _ => crate::PageRotation::Up, // see djvuchanges.txt
         };
         Ok(Info {
-            content: self.content,
+            _content: self.content,
             width,
             height,
             version: crate::InfoVersion { major, minor },

@@ -33,7 +33,7 @@ impl Out for BufOut {
 
 #[cfg(feature = "std")]
 impl<W: std::io::Write> Out for W {
-    fn put(&mut self, b: &[u8]) -> Result<(), Error> {
+    fn put(&mut self, _b: &[u8]) -> Result<(), Error> {
         todo!()
     }
 }
@@ -190,7 +190,7 @@ enum Stage<'wr> {
 impl<'wr> Stage<'wr> {
     fn put(&mut self, b: &[u8]) -> Result<(), Error> {
         match *self {
-            Stage::First(ref mut first) => {
+            Stage::First(ref mut _first) => {
                 // in practice it seems we only use this to write chunk data,
                 // which means calling it without Cur::InChunk is a bug
                 // the behavior is to forward to the underlying Out and also
@@ -503,7 +503,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         Ok(())
     }
 
-    pub fn txta(&mut self, text: &str, zones: &Zones) -> Result<(), Error> {
+    pub fn txta(&mut self, _text: &str, _zones: &Zones) -> Result<(), Error> {
         todo!()
     }
 
@@ -754,7 +754,7 @@ impl AddingZones {
 pub struct Txt(AddingZones);
 
 impl Txt {
-    pub fn new(text: &str) -> Option<Self> {
+    pub fn new(_text: &str) -> Option<Self> {
         todo!()
     }
 
