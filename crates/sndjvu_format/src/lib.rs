@@ -26,7 +26,7 @@ impl Iw44Version {
     pub const CURRENT: Self = Self { major: 1, minor: 2 };
 
     fn pack(self, color_space: Iw44ColorSpace) -> [u8; 2] {
-        todo!()
+        [self.major | ((color_space as u8) << 7), self.minor]
     }
 }
 
@@ -45,7 +45,7 @@ impl InfoVersion {
     pub const CURRENT: Self = Self { major: 0, minor: 26 };
 
     fn pack(self) -> [u8; 2] {
-        todo!()
+        [self.minor, self.major]
     }
 }
 
@@ -62,7 +62,7 @@ impl DirmVersion {
     pub const CURRENT: Self = Self(1);
 
     fn pack(self, is_bundled: IsBundled) -> [u8; 1] {
-        todo!()
+        [self.0 | ((is_bundled as u8) << 7)]
     }
 }
 
