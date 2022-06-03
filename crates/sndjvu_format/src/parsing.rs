@@ -1052,7 +1052,7 @@ impl<'a> SplitOuter<'a> {
         if !is_potential_chunk_id(kind) {
             return Err(Error {});
         }
-        Ok(ProgressInternal::Advanced((kind, len)))
+        Ok(ProgressInternal::Advanced((kind, len - 4)))
     }
 
     fn chunk(&mut self) -> Result<ProgressInternal<([u8; 4], Field<'a>)>, Error> {
