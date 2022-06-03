@@ -11,12 +11,22 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+use core::fmt::{Display, Formatter};
+
+#[derive(Clone, Copy, Debug)]
 pub struct TxtVersion(pub u8);
 
 impl TxtVersion {
     pub const CURRENT: Self = Self(1);
 }
 
+impl Display for TxtVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Iw44Version {
     major: u8,
     minor: u8,
@@ -30,12 +40,26 @@ impl Iw44Version {
     }
 }
 
+impl Display for Iw44Version {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct FgbzVersion(u8);
 
 impl FgbzVersion {
     pub const CURRENT: Self = Self(0);
 }
 
+impl Display for FgbzVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct InfoVersion {
     pub major: u8,
     pub minor: u8,
@@ -49,6 +73,13 @@ impl InfoVersion {
     }
 }
 
+impl Display for InfoVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum PageRotation {
     Up = 1,
     Ccw = 6,
@@ -56,6 +87,7 @@ pub enum PageRotation {
     Cw = 5,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct DirmVersion(u8);
 
 impl DirmVersion {
@@ -66,6 +98,13 @@ impl DirmVersion {
     }
 }
 
+impl Display for DirmVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 enum IsBundled {
     #[allow(unused)]
     No,
@@ -101,11 +140,13 @@ pub enum ZoneKind {
     Character,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum Iw44ColorSpace {
     YCbCr,
     Gray,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Cdc(u8);
 
 impl Cdc {
