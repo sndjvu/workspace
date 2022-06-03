@@ -113,17 +113,17 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
     let head = match &kind {
         b"DJVU" => {
             let content = try_advance!(s.specific_chunk(b"INFO")?);
-            let info = InfoChunk { content };
+            let info = RawInfo { content };
             let elements = ElementP::new(s.pos(), end_pos);
             DocumentHead::SinglePage { info, elements }
         }
         b"DJVM" => {
             let content = try_advance!(s.specific_chunk(b"DIRM")?);
-            let dirm = DirmChunk { content, end_pos };
+            let dirm = RawDirm { content, end_pos };
             let kind = try_advance!(s.peek_chunk()?);
             let navm = if &kind == b"NAVM" {
                 let content = try_advance!(s.specific_chunk(b"NAVM")?);
-                Some(Navm { content })
+                Some(RawNavm { content })
             } else {
                 None
             };
@@ -143,19 +143,22 @@ pub fn indirect_component(data: &[u8]) -> Result<Progress<ComponentHead<'_>>, Er
     Ok(advanced(head, s))
 }
 
+
 /// Parsed representation of the start of a document.
+#[derive(Clone, Debug)]
 pub enum DocumentHead<'a> {
     SinglePage {
-        info: InfoChunk<'a>,
+        info: RawInfo<'a>,
         elements: ElementP,
     },
     MultiPage {
-        dirm: DirmChunk<'a>,
-        navm: Option<Navm<'a>>,
+        dirm: RawDirm<'a>,
+        navm: Option<RawNavm<'a>>,
     },
 }
 
-pub struct InfoChunk<'a> {
+#[derive(Clone, Debug)]
+pub struct RawInfo<'a> {
     content: Field<'a>,
 }
 
@@ -169,7 +172,7 @@ pub struct Info<'a> {
     pub rotation: crate::PageRotation,
 }
 
-impl<'a> InfoChunk<'a> {
+impl<'a> RawInfo<'a> {
     pub fn parse(&self) -> Result<Info<'a>, Error> {
         let mut s = self.content.split();
         let width = s.u16_be()?;
@@ -630,12 +633,13 @@ impl<'a> Chunk<'a> {
     }
 }
 
-pub struct DirmChunk<'a> {
+#[derive(Clone, Debug)]
+pub struct RawDirm<'a> {
     content: Field<'a>,
     end_pos: Pos,
 }
 
-impl<'a> DirmChunk<'a> {
+impl<'a> RawDirm<'a> {
     pub fn parse(&self) -> Result<Dirm<'a>, Error> {
         let mut s = self.content.split();
         let flags = s.byte()?;
@@ -786,7 +790,8 @@ impl<'a> core::iter::DoubleEndedIterator for BundledIter<'a> {
     }
 }
 
-pub struct Navm<'a> {
+#[derive(Clone, Debug)]
+pub struct RawNavm<'a> {
     content: Field<'a>,
 }
 
@@ -796,7 +801,7 @@ pub enum ComponentHead<'a> {
         elements: ElementP,
     },
     Djvu {
-        info: InfoChunk<'a>,
+        info: RawInfo<'a>,
         elements: ElementP,
     },
     Thum {
@@ -825,6 +830,7 @@ impl<'a> Thumbnail<'a> {
 type Pos = u32;
 
 /// Pointer-like immutable cursor to the start or end of an element.
+#[derive(Clone, Debug)]
 pub struct ElementP {
     pos: Pos,
     /// The position at which the *containing `FORM`* ends.
@@ -1083,7 +1089,7 @@ impl<'a> SplitOuter<'a> {
             }
             b"DJVU" => {
                 let content = try_advance_internal!(self.specific_chunk(b"INFO")?);
-                let info = InfoChunk { content };
+                let info = RawInfo { content };
                 let elements = ElementP::new(self.pos(), end_pos);
                 ComponentHead::Djvu { info, elements }
             }
