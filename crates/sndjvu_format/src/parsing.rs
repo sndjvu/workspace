@@ -766,6 +766,15 @@ impl<'a> Bundled<'a> {
     }
 }
 
+impl<'a> IntoIterator for Bundled<'a> {
+    type Item = ComponentP;
+    type IntoIter = BundledIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 pub struct BundledIter<'a> {
     offsets: core::slice::Iter<'a, ComponentOffset>,
     end_pos: Pos,
@@ -795,6 +804,50 @@ impl<'a> core::iter::DoubleEndedIterator for BundledIter<'a> {
 #[derive(Clone, Debug)]
 pub struct RawNavm<'a> {
     content: Field<'a>,
+}
+
+impl<'a> RawNavm<'a> {
+    pub fn bzz(&self) -> &'a [u8] {
+        self.content.bytes()
+    }
+
+    pub fn decoded<'dec>(&self, decoded: &'dec [u8]) -> DecodedNavm<'dec> {
+        todo!()
+    }
+}
+
+pub struct DecodedNavm<'a> {
+    content: Field<'a>,
+}
+
+impl<'a> DecodedNavm<'a> {
+    pub fn num_bookmarks(&self) -> u16 {
+        todo!()
+    }
+
+    pub fn parsing(&self) -> ParsingNavm<'a> {
+        todo!()
+    }
+}
+
+pub struct ParsingNavm<'a> {
+    s: SplitInner<'a>,
+}
+
+impl<'a> ParsingNavm<'a> {
+    pub fn parse_next(&mut self) -> Result<Option<Bookmark<'a>>, Error> {
+        todo!()
+    }
+
+    pub fn expected_len(&self) -> u16 {
+        todo!()
+    }
+}
+
+pub struct Bookmark<'a> {
+    pub num_children: u8,
+    pub description: &'a [u8],
+    pub url: &'a [u8],
 }
 
 /// Parsed representation of the start of a component.
