@@ -291,7 +291,7 @@ impl<'a> RawTxtz<'a> {
 }
 
 pub struct Txt<'a> {
-    // FIXME this should have a content field?
+    _content: Field<'a>,
     pub text: &'a [u8],
     pub version: crate::TxtVersion,
     pub zones: &'a [Zone],
@@ -299,12 +299,14 @@ pub struct Txt<'a> {
 
 impl<'a> Txt<'a> {
     fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
+        let content = s.parent;
         let len = s.u24_be()?;
         let text = s.slice(len as usize)?;
         let version = s.byte().map(crate::TxtVersion)?;
         let raw_zones = s.rest_arrays()?;
         let zones = Zone::cast_slice(raw_zones)?;
         Ok(Txt {
+            _content: content,
             text,
             version,
             zones,
@@ -429,14 +431,15 @@ impl<'a> RawBg44<'a> {
 // FIXME it's not grammatical for a FG44 chunk or TH44 chunk to have kind Tail
 // and the parser should probably reflect that?
 pub struct Iw44<'a> {
-    // FIXME this should have a content field?
+    _content: Field<'a>,
     pub kind: Iw44Kind,
     pub num_slices: u8,
-    rest: Field<'a>,
+    body: Field<'a>,
 }
 
 impl<'a> Iw44<'a> {
     fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
+        let content = s.parent;
         let byte = s.byte()?;
         let num_slices = s.byte()?;
         let kind = if let Some(serial) = NonZeroU8::new(byte) {
@@ -462,16 +465,17 @@ impl<'a> Iw44<'a> {
                 initial_cdc,
             }
         };
-        let rest = s.rest();
+        let body = s.rest();
         Ok(Iw44 {
+            _content: content,
             kind,
             num_slices,
-            rest,
+            body,
         })
     }
 
-    pub fn data(&self) -> &'a [u8] {
-        self.rest.bytes()
+    pub fn body(&self) -> &'a [u8] {
+        self.body.bytes()
     }
 }
 
