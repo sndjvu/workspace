@@ -428,8 +428,6 @@ impl<'a> RawBg44<'a> {
     }
 }
 
-// FIXME it's not grammatical for a FG44 chunk or TH44 chunk to have kind Tail
-// and the parser should probably reflect that?
 pub struct Iw44<'a> {
     _content: Field<'a>,
     pub kind: Iw44Kind,
@@ -813,14 +811,17 @@ pub enum ComponentHead<'a> {
     },
 }
 
-/// Parsed representation of a thumbnail image (`TH44` chunk).
-pub struct Thumbnail<'a> {
+pub struct RawTh44<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
-impl<'a> Thumbnail<'a> {
+impl<'a> RawTh44<'a> {
+    pub fn parse(&self) -> Result<Iw44<'a>, Error> {
+        Iw44::parse_from(self.content.split())
+    }
+
     pub fn after(&self) -> ThumbnailP {
         ThumbnailP::new(self.after_pos, self.end_pos)
     }
@@ -924,14 +925,14 @@ impl ThumbnailP {
         Self { pos, end_pos }
     }
 
-    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<Thumbnail<'a>, ()>, Error> {
+    pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<RawTh44<'a>, ()>, Error> {
         if self.is_end() {
             return Ok(Progress::End(()));
         }
         let mut s = split_outer(data, self.pos, Some(self.end_pos));
         let s = &mut s;
         let content = try_advance!(s.specific_chunk(b"TH44")?);
-        let thumbnail = Thumbnail {
+        let thumbnail = RawTh44 {
             content,
             after_pos: s.pos(),
             end_pos: self.end_pos,
