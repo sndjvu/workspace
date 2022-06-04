@@ -3,8 +3,12 @@ on:
   push:
     branches:
       - master
+    paths:
+      - '.github/workflows/www.yml'
+      - 'x.sh'
+      - 'www/**'
 jobs:
-  build:
+  generate:
     runs-on: ubuntu-latest
     permissions:
       contents: write
