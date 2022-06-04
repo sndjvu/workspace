@@ -6,3 +6,4 @@ edition = "2021"
 
 [features]
 std = []
+bzz = []

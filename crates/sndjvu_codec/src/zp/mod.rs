@@ -287,4 +287,7 @@ impl Context {
 }
 
 pub mod dec;
+pub use dec::Decoder;
+
 pub mod enc;
+pub use enc::Encoder;

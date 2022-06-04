@@ -32,3 +32,5 @@ pub struct Progress<'a, U = ()> {
 }
 
 pub(crate) mod zp;
+#[cfg(feature = "bzz")]
+pub mod bzz;
