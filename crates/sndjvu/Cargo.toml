@@ -1,0 +1,12 @@
+[package]
+name = "sndjvu"
+version = "0.0.0"
+
+edition = "2021"
+
+[features]
+std = ["sndjvu_format/std", "sndjvu_codec/std"]
+
+[dependencies]
+sndjvu_format = { version = "0.0.0", path = "../sndjvu_format" }
+sndjvu_codec = { version = "0.0.0", path = "../sndjvu_codec" }
