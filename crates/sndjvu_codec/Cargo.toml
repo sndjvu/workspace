@@ -1,0 +1,8 @@
+[package]
+name = "sndjvu_codec"
+version = "0.0.0"
+
+edition = "2021"
+
+[features]
+std = []
