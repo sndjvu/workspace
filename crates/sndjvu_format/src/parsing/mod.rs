@@ -273,6 +273,12 @@ pub struct RawAnta<'a> {
     end_pos: Pos,
 }
 
+impl<'a> RawAnta<'a> {
+    pub fn parsing(&self) -> Annotations<'a> {
+        Annotations::new(self.content.bytes())
+    }
+}
+
 pub struct RawAntz<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -282,6 +288,10 @@ pub struct RawAntz<'a> {
 impl<'a> RawAntz<'a> {
     pub fn bzz(&self) -> &'a [u8] {
         self.content.bytes()
+    }
+
+    pub fn parsing_decoded<'dec>(&self, decoded: &'dec [u8]) -> Annotations<'dec> {
+        Annotations::new(decoded)
     }
 }
 
@@ -1307,3 +1317,6 @@ impl<'a> SplitInner<'a> {
         }
     }
 }
+
+mod ant;
+pub use ant::Annotations;

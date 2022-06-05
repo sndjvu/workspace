@@ -342,10 +342,10 @@ impl Display for Shape {
 
 #[derive(Debug)]
 pub struct Maparea {
-    link: Link,
-    comment: Quoted,
-    shape: Shape,
-    border: Border,
+    pub(crate) link: Link,
+    pub(crate) comment: Quoted,
+    pub(crate) shape: Shape,
+    pub(crate) border: Border,
 }
 
 impl Maparea {
