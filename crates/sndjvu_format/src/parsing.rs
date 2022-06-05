@@ -48,6 +48,8 @@
 // padding
 
 use core::num::NonZeroU8;
+#[cfg(sndjvu_backtrace)]
+use std::backtrace::Backtrace;
 
 /// The outcome of a parsing operation, if no [`Error`] was encountered.
 pub enum Progress<T, D = Void> {
@@ -102,7 +104,28 @@ macro_rules! try_advance {
     };
 }
 
+#[derive(Debug)]
 pub struct Error {
+    #[cfg(sndjvu_backtrace)]
+    backtrace: Backtrace,
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[cfg(sndjvu_backtrace)]
+        { write!(f, "{}", self.backtrace)?; }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
+
+fn error_placeholder() -> Error {
+    Error {
+        #[cfg(sndjvu_backtrace)]
+        backtrace: Backtrace::capture(),
+    }
 }
 
 pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
@@ -130,7 +153,7 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
             DocumentHead::MultiPage { dirm, navm }
 
         }
-        _ => return Err(Error {}),
+        _ => return Err(error_placeholder()),
     };
     Ok(advanced(head, s))
 }
@@ -335,7 +358,7 @@ impl Zone {
     fn cast_slice(arrays: &[[u8; 17]]) -> Result<&[Self], Error> {
         for &[x, ..] in arrays {
             if !(1..=7).contains(&x) {
-                return Err(Error {});
+                return Err(error_placeholder());
             }
         }
         // SAFETY Zone has the same layout as [u8; 17], and we've checked that the kind
@@ -706,7 +729,7 @@ impl<'a> Dirm<'a> {
                 0 => crate::ComponentKind::Djvi,
                 1 => crate::ComponentKind::Djvu,
                 2 => crate::ComponentKind::Thum,
-                _ => return Err(Error {}),
+                _ => return Err(error_placeholder()),
             }
         }
         for entry in &mut meta {
@@ -1085,10 +1108,10 @@ impl<'a> SplitOuter<'a> {
         let &[id, xs, kind] = try_advance_internal!(self.header());
         let len = u32::from_be_bytes(xs);
         if &id != b"FORM" {
-            return Err(Error {});
+            return Err(error_placeholder());
         }
         if !is_potential_chunk_id(kind) {
-            return Err(Error {});
+            return Err(error_placeholder());
         }
         Ok(ProgressInternal::Advanced((kind, len - 4)))
     }
@@ -1098,13 +1121,13 @@ impl<'a> SplitOuter<'a> {
         let &[magic, id, xs, kind] = try_advance_internal!(self.header());
         let len = u32::from_be_bytes(xs);
         if &magic != b"AT&T" {
-            return Err(Error {});
+            return Err(error_placeholder());
         }
         if &id != b"FORM" {
-            return Err(Error {});
+            return Err(error_placeholder());
         }
         if !is_potential_chunk_id(kind) {
-            return Err(Error {});
+            return Err(error_placeholder());
         }
         Ok(ProgressInternal::Advanced((kind, len - 4)))
     }
@@ -1114,7 +1137,7 @@ impl<'a> SplitOuter<'a> {
         let &[id, xs] = try_advance_internal!(self.header());
         let len = u32::from_be_bytes(xs);
         if !is_potential_chunk_id(id) {
-            return Err(Error {});
+            return Err(error_placeholder());
         }
         let content = try_advance_internal!(self.field(len));
         Ok(ProgressInternal::Advanced((id, content)))
@@ -1123,7 +1146,7 @@ impl<'a> SplitOuter<'a> {
     fn specific_chunk(&mut self, expected: &[u8; 4]) -> Result<ProgressInternal<Field<'a>>, Error> {
         let (id, content) = try_advance_internal!(self.chunk()?);
         if &id != expected {
-            return Err(Error {});
+            return Err(error_placeholder());
         }
         Ok(ProgressInternal::Advanced(content))
     }
@@ -1133,7 +1156,7 @@ impl<'a> SplitOuter<'a> {
         try_advance_internal!(s.align());
         let &[id] = try_advance_internal!(s.header());
         if !is_potential_chunk_id(id) {
-            return Err(Error {});
+            return Err(error_placeholder());
         }
         Ok(ProgressInternal::Advanced(id))
     }
@@ -1155,7 +1178,7 @@ impl<'a> SplitOuter<'a> {
                 let thumbnails = ThumbnailP::new(self.pos(), end_pos);
                 ComponentHead::Thum { thumbnails }
             }
-            _ => return Err(Error {}),
+            _ => return Err(error_placeholder()),
         };
         Ok(ProgressInternal::Advanced(head))
     }
@@ -1213,7 +1236,7 @@ impl<'a> SplitInner<'a> {
             self.by += N as u32; // XXX
             Ok(array)
         } else {
-            Err(Error {})
+            Err(error_placeholder())
         }
     }
 
@@ -1223,7 +1246,7 @@ impl<'a> SplitInner<'a> {
             self.by += n as u32 * N as u32; // XXX
             Ok(arrays)
         } else {
-            Err(Error {})
+            Err(error_placeholder())
         }
     }
 
@@ -1232,7 +1255,7 @@ impl<'a> SplitInner<'a> {
             self.by += n as u32; // XXX
             Ok(slice)
         } else {
-            Err(Error {})
+            Err(error_placeholder())
         }
     }
 
@@ -1242,7 +1265,7 @@ impl<'a> SplitInner<'a> {
             self.by += i as u32 + 1;
             Ok(s)
         } else {
-            Err(Error {})
+            Err(error_placeholder())
         }
     }
 
@@ -1280,7 +1303,7 @@ impl<'a> SplitInner<'a> {
         if rest.is_empty() {
             Ok(arrays)
         } else {
-            Err(Error {})
+            Err(error_placeholder())
         }
     }
 }
