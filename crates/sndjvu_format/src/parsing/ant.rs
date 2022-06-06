@@ -1,10 +1,10 @@
-use super::{Error, error_placeholder};
+use super::{Field, Error, error_placeholder};
 use crate::annot::*;
 use alloc::vec::Vec;
 
 #[derive(Clone, Debug)]
 pub struct Annotations<'a> {
-    full: &'a [u8],
+    full: Field<'a>,
     pos: usize,
 }
 
@@ -17,6 +17,10 @@ enum Token<'a> {
     Number(u32),
 }
 
+fn split_for_token(raw: &[u8]) -> (usize, Option<u8>, &[u8]) {
+    todo!()
+}
+
 fn parse_quoted(raw: &[u8]) -> Quoted {
     todo!()
 }
@@ -26,25 +30,21 @@ fn parse_link_dest(raw: Quoted) -> LinkDest {
 }
 
 impl<'a> Annotations<'a> {
-    pub(super) fn new(full: &'a [u8]) -> Self {
+    fn remaining(&self) -> &'a [u8] {
+        todo!()
+    }
+
+    pub(super) fn new(full: Field<'a>) -> Self {
         Self { full, pos: 0 }
     }
 
     fn maybe_token(&mut self) -> Result<Option<Token<'a>>, Error> {
-        let (i, c, rest) = match self.full[self.pos..].iter().position(|&c| c != b' ' && c != b'\t' && c != b'\r' && c != b'\n') {
-            None => {
-                self.pos = self.full.len();
-                return Ok(None);
-            }
-            Some(x) => {
-                let (&c, rest) = self.full[self.pos + x..].split_first().unwrap();
-                (x, c, rest)
-            }
-        };
+        let (i, c, rest) = split_for_token(self.remaining());
         let (tok, len) = match c {
-            b'(' => (Token::Open, 1),
-            b')' => (Token::Close, 1),
-            b'#' => {
+            None => (None, 0),
+            Some(b'(') => (Some(Token::Open), 1),
+            Some(b')') => (Some(Token::Close), 1),
+            Some(b'#') => {
                 let mut xs = rest.iter().copied();
                 let mut channels = [0; 3];
                 for chan in &mut channels {
@@ -58,18 +58,18 @@ impl<'a> Annotations<'a> {
                     }
                 }
                 let [r, g, b] = channels;
-                (Token::Color(Color { r, g, b }), 7)
+                (Some(Token::Color(Color { r, g, b })), 7)
             }
-            b'"' => {
+            Some(b'"') => {
                 // note: only support the DjVuLibre quoting convention to start
                 todo!()
             }
-            a if a.is_ascii_alphabetic() => todo!(), // word/key
-            d if d.is_ascii_digit() => todo!(), // number
+            Some(a) if a.is_ascii_alphabetic() => todo!(), // word/key
+            Some(d) if d.is_ascii_digit() => todo!(), // number
             _ => return Err(error_placeholder()),
         };
         self.pos += i + len;
-        Ok(Some(tok))
+        Ok(tok)
     }
 
     fn token(&mut self) -> Result<Token<'a>, Error> {

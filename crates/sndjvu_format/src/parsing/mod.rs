@@ -275,7 +275,7 @@ pub struct RawAnta<'a> {
 
 impl<'a> RawAnta<'a> {
     pub fn parsing(&self) -> Annotations<'a> {
-        Annotations::new(self.content.bytes())
+        Annotations::new(self.content)
     }
 }
 
@@ -290,8 +290,18 @@ impl<'a> RawAntz<'a> {
         self.content.bytes()
     }
 
-    pub fn parsing_decoded<'dec>(&self, decoded: &'dec [u8]) -> Annotations<'dec> {
-        Annotations::new(decoded)
+    pub fn decoded<'dec>(&self, decoded: &'dec [u8]) -> Ant<'dec> {
+        Ant { content: self.content.decoded(decoded) }
+    }
+}
+
+pub struct Ant<'a> {
+    content: Field<'a>,
+}
+
+impl<'a> Ant<'a> {
+    pub fn parsing(&self) -> Annotations<'a> {
+        Annotations::new(self.content)
     }
 }
 
@@ -319,7 +329,7 @@ impl<'a> RawTxtz<'a> {
     }
 
     pub fn parse_decoded<'dec>(&self, decoded: &'dec [u8]) -> Result<Txt<'dec>, Error> {
-        Txt::parse_from(self.content.split_decoded(decoded))
+        Txt::parse_from(self.content.decoded(decoded).split())
     }
 }
 
@@ -565,7 +575,7 @@ impl<'a> FgbzIndices<'a> {
     }
 
     pub fn parse_decoded<'dec>(&self, decoded: &'dec [u8]) -> Result<&'dec [PaletteIndex], Error> {
-        let mut s = self.content.split_decoded(decoded);
+        let mut s = self.content.decoded(decoded).split();
         let num_indices = s.u24_be()?;
         let raw_indices = s.slice_of_arrays(num_indices as usize)?;
         let indices = PaletteIndex::cast_slice(raw_indices);
@@ -714,7 +724,7 @@ impl<'a> Dirm<'a> {
     }
 
     pub fn parse_decoded_extra<'dec>(&self, decoded: &'dec [u8]) -> Result<alloc::vec::Vec<ComponentMeta<'dec>>, Error> {
-        let mut s = self.bzz.split_decoded(decoded);
+        let mut s = self.bzz.decoded(decoded).split();
         let init_meta = ComponentMeta {
             len: 0,
             kind: crate::ComponentKind::Djvi,
@@ -844,26 +854,27 @@ impl<'a> RawNavm<'a> {
         self.content.bytes()
     }
 
-    pub fn decoded<'dec>(&self, decoded: &'dec [u8]) -> DecodedNavm<'dec> {
-        todo!()
+    pub fn decoded<'dec>(&self, decoded: &'dec [u8]) -> Result<DecodedNavm<'dec>, Error> {
+        let mut s = self.content.decoded(decoded).split();
+        let num_bookmarks = s.u16_be()?;
+        let body = s.rest();
+        Ok(DecodedNavm { num_bookmarks, body })
     }
 }
 
 pub struct DecodedNavm<'a> {
-    content: Field<'a>,
+    pub num_bookmarks: u16,
+    body: Field<'a>,
 }
 
 impl<'a> DecodedNavm<'a> {
-    pub fn num_bookmarks(&self) -> u16 {
-        todo!()
-    }
-
     pub fn parsing(&self) -> ParsingNavm<'a> {
-        todo!()
+        ParsingNavm { remaining: self.num_bookmarks, s: self.body.split() }
     }
 }
 
 pub struct ParsingNavm<'a> {
+    remaining: u16,
     s: SplitInner<'a>,
 }
 
@@ -873,7 +884,7 @@ impl<'a> ParsingNavm<'a> {
     }
 
     pub fn expected_len(&self) -> u16 {
-        todo!()
+        self.remaining
     }
 }
 
@@ -1095,6 +1106,7 @@ impl<'a> SplitOuter<'a> {
                 start: self.by as usize,
                 start_pos: self.pos(),
                 end: self.by as usize + len as usize,
+                bzz: None,
             };
             self.by += len;
             ProgressInternal::Advanced(field)
@@ -1200,6 +1212,7 @@ struct Field<'a> {
     start: usize,
     start_pos: Pos,
     end: usize,
+    bzz: Option<(Pos, Pos)>,
 }
 
 impl<'a> Field<'a> {
@@ -1211,21 +1224,16 @@ impl<'a> Field<'a> {
         SplitInner {
             parent: self,
             by: 0,
-            bzz: None,
         }
     }
 
-    fn split_decoded<'dec>(self, decoded: &'dec [u8]) -> SplitInner<'dec> {
-        let parent = Field {
+    fn decoded<'dec>(self, decoded: &'dec [u8]) -> Field<'dec> {
+        Field {
             full: decoded,
             start: 0,
             start_pos: 0,
             end: decoded.len(),
-        };
-        SplitInner {
-            parent,
-            by: 0,
-            bzz: Some((self.start_pos, self.start_pos + (self.end - self.start) as u32)),
+            bzz: Some((self.start_pos, self.start_pos + (self.end - self.start) as u32)), // XXX
         }
     }
 }
@@ -1233,7 +1241,6 @@ impl<'a> Field<'a> {
 struct SplitInner<'a> {
     parent: Field<'a>,
     by: u32,
-    bzz: Option<(Pos, Pos)>,
 }
 
 impl<'a> SplitInner<'a> {
@@ -1305,6 +1312,7 @@ impl<'a> SplitInner<'a> {
             start: self.parent.start + self.by as usize,
             start_pos: self.parent.start_pos + self.by,
             end: self.parent.end,
+            bzz: self.parent.bzz,
         }
     }
 
