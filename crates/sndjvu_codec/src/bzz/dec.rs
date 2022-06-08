@@ -150,7 +150,6 @@ impl<'a> Decoder<'a> {
         };
 
         let block_size = decode_u24(&mut zp);
-        #[cfg(sndjvu_debug_bzz)] std::eprintln!("BLOCK {block_size}");
         if block_size == 0 {
             return Update::Success(None);
         }
@@ -164,13 +163,6 @@ impl<'a> Decoder<'a> {
         } else {
             Speed::Zero
         };
-        #[cfg(sndjvu_debug_bzz)] std::eprintln!("SPEED {}",
-            match speed {
-                Speed::Zero => 0,
-                Speed::One => 1,
-                Speed::Two => 2,
-            }
-        );
         let mtf = Mtf::new(speed, self.mtf_array);
 
         scratch.shadow.clear();
@@ -288,7 +280,6 @@ impl<'a, 'b> DecodeBlock<'a, 'b> {
             };
 
             let mtf_index = progress.mtf_index.map_or(256, usize::from);
-            #[cfg(sndjvu_debug_bzz)] std::eprintln!("MTF {mtf_index}");
             let start = mtf_index.min(2);
             let next = if zp.decode(&mut contexts[start]) {
                 0
@@ -298,7 +289,6 @@ impl<'a, 'b> DecodeBlock<'a, 'b> {
                 (1 << x) + decode_u8(&mut zp, 5 + (1 << x), x, &mut contexts)
             } else {
                 progress.mtf_index = None;
-                #[cfg(sndjvu_debug_bzz)] std::eprintln!("MARKER {}", progress.i);
                 if let Some(old) = progress.marker.replace(progress.i) {
                     return Err(Error {
                         kind: ErrorKind::ExtraMarker {

@@ -117,3 +117,6 @@ impl Mtf {
 }
 
 pub mod dec;
+pub use dec::{decompress, decompress_oneshot};
+
+pub mod enc;

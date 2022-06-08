@@ -880,7 +880,20 @@ pub struct ParsingNavm<'a> {
 
 impl<'a> ParsingNavm<'a> {
     pub fn parse_next(&mut self) -> Result<Option<Bookmark<'a>>, Error> {
-        todo!()
+        if self.remaining == 0 {
+            return Ok(None);
+        }
+        self.remaining -= 1;
+        let num_children = self.s.byte()?;
+        let description_len = self.s.u24_be()?;
+        let description = self.s.slice(description_len as usize)?;
+        let url_len = self.s.u24_be()?;
+        let url = self.s.slice(url_len as usize)?;
+        Ok(Some(Bookmark {
+            num_children,
+            description,
+            url,
+        }))
     }
 
     pub fn expected_len(&self) -> u16 {
