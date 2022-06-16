@@ -129,9 +129,8 @@ pub struct Decoder<'a> {
 
 impl<'a> Decoder<'a> {
     pub fn new(bzz: &'a [u8]) -> Self {
-        const NEW_CONTEXT: zp::Context = zp::Context::new();
         Self {
-            contexts: Box::new([NEW_CONTEXT; NUM_CONTEXTS]),
+            contexts: Box::new([zp::Context::NEW; NUM_CONTEXTS]),
             zp: zp::Decoder::new(bzz),
             mtf_array: Box::new([Symbol(0); 256]),
         }

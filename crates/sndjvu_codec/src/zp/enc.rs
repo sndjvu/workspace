@@ -1,6 +1,5 @@
 use crate::Update;
 use super::{Context, Entry};
-use crate::Progress;
 use core::mem::{take, replace};
 
 struct State {
@@ -83,7 +82,7 @@ const THREE_EIGHTHS: u32 = 0x60_00;
 const ONE: u32 = 0x1_00_00;
 
 impl<'a> Encoder<'a> {
-    pub fn provision(self, num_decisions: u32) -> Update<Self, Progress<'a, EncoderSave>> {
+    pub fn provision(self, num_decisions: u32) -> Update<Self, (usize, EncoderSave)> {
         if self.out.can(num_decisions) {
             Update::Success(self)
         } else {
@@ -157,7 +156,7 @@ impl<'a> Encoder<'a> {
     }
 
     // end of encoding: write any residual bytes
-    pub fn flush(self) -> Progress<'a> {
+    pub fn flush(self) -> (usize, EncoderSave) {
         todo!()
     }
 }

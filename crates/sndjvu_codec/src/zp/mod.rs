@@ -273,9 +273,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub const fn new() -> Self {
-        Self { k: 0 }
-    }
+    pub const NEW: Self = Self { k: 0 };
 
     fn entry(&self) -> Entry {
         TABLE[self.k as usize]
