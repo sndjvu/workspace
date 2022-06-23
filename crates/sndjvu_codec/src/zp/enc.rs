@@ -1,63 +1,89 @@
 use crate::Update;
 use super::{Context, Entry};
-use core::mem::{take, replace};
+use core::mem::take;
 
 struct State {
-    a: u16,
-    u: u16,
+    a: u32,
+    u: u32,
 }
 
 struct Out<T = ()> {
     delay: u32,
-    shadow: u64,
+    buffer: u32,
     run_counter: u32,
-    ready: u64,
+    ready: u8,
     dispense_countdown: u32,
 
     place: T,
 }
 
+impl<T> Out<T> {
+    fn relay<U>(self, place: U) -> Out<U> {
+        Out {
+            delay: self.delay,
+            buffer: self.buffer,
+            run_counter: self.run_counter,
+            ready: self.ready,
+            dispense_countdown: self.dispense_countdown,
+            place,
+        }
+    }
+}
+
 struct Place<'a> {
-    pos: usize,
-    full: &'a mut [u8],
+    inner: core::slice::IterMut<'a, u8>,
+    off: usize,
 }
 
 impl<'a> Out<Place<'a>> {
     fn dispense(&mut self) {
-        let pos = self.place.pos;
-        let front = &mut self.place.full[pos..pos + 8];
-        let front: &mut [u8; 8] = front.try_into().unwrap();
-        *front = take(&mut self.ready).to_be_bytes();
-        self.place.pos += 8;
+        // FIXME better panic message (mention provisioning)
+        *self.place.inner.next().unwrap() = take(&mut self.ready);
+        self.place.off += 1;
     }
 
     fn bit(&mut self, b: bool) {
         if self.dispense_countdown == 0 {
             self.dispense();
-            self.dispense_countdown = 64;
+            self.dispense_countdown = 8;
         }
-        self.ready = (self.ready << 1) | (b as u64);
+        self.ready = (self.ready << 1) | (b as u8);
         self.dispense_countdown -= 1;
     }
 
     fn run(&mut self, head: bool) {
-        // TODO some kind of fast path/unrolling
         self.bit(head);
-        for _ in 0..take(&mut self.run_counter) {
+        for _ in 0..self.run_counter {
             self.bit(!head);
+        }
+        self.run_counter = 0;
+    }
+
+    fn emit(&mut self, u: u32) {
+        let buf = 1u32.wrapping_sub(u >> 15).wrapping_add(self.buffer << 1);
+        self.buffer = buf & 0xff_ff_ff;
+        match buf >> 24 {
+            0x01 => self.run(true),
+            0xff => self.run(false),
+            0x00 => self.run_counter += 1,
+            _ => unreachable!(),
         }
     }
 
-    fn emit(&mut self, u: u16, n: u32) {
-        todo!()
-    }
-
-    fn emit_special(&mut self, up: u32) {
-        todo!()
-    }
-
     fn can(&self, num_decisions: u32) -> bool {
-        todo!()
+        let mut bits = 8 - self.dispense_countdown;
+        bits += 16 * num_decisions;
+        bits += 24 + 1;
+        let bytes = (bits + 7) / 8;
+        bytes as usize <= self.place.inner.as_slice().len()
+    }
+
+    fn fill(mut self) -> usize {
+        while self.dispense_countdown > 0 {
+            self.ready = (self.ready << 1) | 1;
+        }
+        self.dispense();
+        self.place.off
     }
 }
 
@@ -73,7 +99,10 @@ pub struct EncoderSave {
 
 impl EncoderSave {
     pub fn resume(self, buf: &mut [u8]) -> Encoder<'_> {
-        todo!()
+        Encoder {
+            state: self.state,
+            out: self.out.relay(Place { inner: buf.iter_mut(), off: 0 }),
+        }
     }
 }
 
@@ -86,7 +115,12 @@ impl<'a> Encoder<'a> {
         if self.out.can(num_decisions) {
             Update::Success(self)
         } else {
-            todo!()
+            let off = self.out.place.off;
+            let save = EncoderSave {
+                state: self.state,
+                out: self.out.relay(()),
+            };
+            Update::Suspend((off, save))
         }
     }
 
@@ -94,10 +128,10 @@ impl<'a> Encoder<'a> {
         let Entry { Δ, θ, μ, λ } = context.entry();
         let mps = context.mps();
 
-        let (a, u) = (self.state.a as u32, self.state.u as u32);
+        let State { mut a, mut u } = self.state;
         let z_0 = a + Δ as u32;
         if decision == mps && z_0 < HALF {
-            self.state.a = z_0 as u16;
+            self.state.a = z_0;
             return;
         }
         let d = THREE_EIGHTHS + (z_0 + a) / 4;
@@ -105,59 +139,63 @@ impl<'a> Encoder<'a> {
         if decision != mps {
             context.k = λ;
 
-            // we always emit at least once on this path
-            let ap = a + ONE - z;
-            let up = u + ONE - z;
-            debug_assert!(ap >= HALF);
-            self.out.emit_special(up);
-            let a = (ap << 1) as u16;
-            let u = (up << 1) as u16;
-            let n = a.leading_ones();
-            self.out.emit(u, n);
-            self.state.a = a.checked_shl(n).unwrap_or(0);
-            self.state.u = u.checked_shl(n).unwrap_or(0);
+            a = a + ONE - z;
+            u = u + ONE - z;
+            while a >= HALF {
+                self.out.emit(u);
+                a = (a << 1) & 0xff_ff;
+                u = (u << 1) & 0xff_ff;
+            }
         } else {
             if a >= θ as u32 {
                 context.k = μ;
             }
 
-            // we emit at most once on this path
-            let a = z as u16;
-            let u = u as u16;
-            let n = (z >= HALF) as u32;
-            self.out.emit(u, n);
-            self.state.a = a << n;
-            self.state.u = u << n;
+            a = z;
+            if a >= HALF {
+                self.out.emit(u);
+                a = (a << 1) & 0xff_ff;
+                u = (u << 1) & 0xff_ff;
+            }
         }
+        self.state = State { a, u };
     }
 
     pub fn encode_passthrough(&mut self, decision: bool) {
-        let (a, u) = (self.state.a as u32, self.state.u as u32);
+        let State { mut a, mut u } = self.state;
         let z = HALF + a / 2;
         if decision {
-            let ap = a + ONE - z;
-            let up = a + ONE - z;
-            debug_assert!(ap >= HALF);
-            self.out.emit_special(up);
-            let a = (ap << 1) as u16;
-            let u = (up << 1) as u16;
-            let n = a.leading_ones();
-            self.out.emit(u, n);
-            self.state.a = a.checked_shl(n).unwrap_or(0);
-            self.state.u = u.checked_shl(n).unwrap_or(0);
+            a = z;
+            if a >= HALF {
+                self.out.emit(u);
+                a = (a << 1) & 0xff_ff;
+                u = (u << 1) & 0xff_ff;
+            }
         } else {
-            let a = z as u16;
-            let u = u as u16;
-            let n = (z >= HALF) as u32;
-            self.out.emit(u, n);
-            self.state.a = a << n;
-            self.state.u = u << n;
+            a = a + ONE - z;
+            u = u + ONE - z;
+            while a >= HALF {
+                self.out.emit(u);
+                a = (a << 1) & 0xff_ff;
+                u = (u << 1) & 0xff_ff;
+            }
         }
+        self.state = State { a, u };
     }
 
-    // end of encoding: write any residual bytes
-    pub fn flush(self) -> (usize, EncoderSave) {
-        todo!()
+    // TODO this crosses layers in an uncomfortable way, try to refactor it
+    pub fn flush(mut self) -> usize {
+        if self.state.u > HALF {
+            self.state.u = ONE;
+        } else if self.state.u > 0 {
+            self.state.u = HALF;
+        }
+        while self.out.buffer != 0xff_ff_ff || self.state.u != 0 {
+            self.out.emit(self.state.u);
+            self.state.u = (self.state.u << 1) & 0xff_ff;
+        }
+        self.out.run(true);
+        self.out.fill()
     }
 }
 
