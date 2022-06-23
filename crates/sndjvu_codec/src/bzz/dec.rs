@@ -323,14 +323,11 @@ impl<'a, 'b> DecodeBlock<'a, 'b> {
 }
 
 /// Decompress BZZ data from a byte slice into existing output and scratch buffers.
-///
-/// The output buffer `buf` will be [cleared](Vec::clear), and then each decoded block will be appended to it in turn.
 pub fn decompress(
     bzz: &[u8],
     buf: &mut Vec<u8>,
     scratch: &mut Scratch,
 ) -> Result<(), Error> {
-    buf.clear();
     let mut decoder = Decoder::new(bzz);
     loop {
         match decoder.block(scratch) {
