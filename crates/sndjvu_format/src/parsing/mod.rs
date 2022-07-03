@@ -185,16 +185,6 @@ pub struct RawInfo<'a> {
     content: Field<'a>,
 }
 
-pub struct Info<'a> {
-    _content: Field<'a>,
-    pub width: u16,
-    pub height: u16,
-    pub version: crate::InfoVersion,
-    pub dpi: u16,
-    pub gamma: u8,
-    pub rotation: crate::PageRotation,
-}
-
 impl<'a> RawInfo<'a> {
     pub fn parse(&self) -> Result<Info<'a>, Error> {
         let mut s = self.content.split();
@@ -220,6 +210,42 @@ impl<'a> RawInfo<'a> {
             gamma,
             rotation,
         })
+    }
+}
+
+pub struct Info<'a> {
+    _content: Field<'a>,
+    width: u16,
+    height: u16,
+    version: crate::InfoVersion,
+    dpi: u16,
+    gamma: u8,
+    rotation: crate::PageRotation,
+}
+
+impl<'a> Info<'a> {
+    pub fn width(&self) -> u16 {
+        self.width
+    }
+
+    pub fn height(&self) -> u16 {
+        self.height
+    }
+
+    pub fn version(&self) -> crate::InfoVersion {
+        self.version
+    }
+
+    pub fn dpi(&self) -> u16 {
+        self.dpi
+    }
+
+    pub fn gamma(&self) -> u8 {
+        self.gamma
+    }
+
+    pub fn rotation(&self) -> crate::PageRotation {
+        self.rotation
     }
 }
 
@@ -335,12 +361,24 @@ impl<'a> RawTxtz<'a> {
 
 pub struct Txt<'a> {
     _content: Field<'a>,
-    pub text: &'a [u8],
-    pub version: crate::TxtVersion,
-    pub zones: &'a [Zone],
+    text: &'a [u8],
+    version: crate::TxtVersion,
+    zones: &'a [Zone],
 }
 
 impl<'a> Txt<'a> {
+    pub fn text(&self) -> &'a [u8] {
+        self.text
+    }
+
+    pub fn version(&self) -> crate::TxtVersion {
+        self.version
+    }
+
+    pub fn zones(&self) -> &'a [Zone] {
+        self.zones
+    }
+
     fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
         let content = s.parent;
         let len = s.u24_be()?;
@@ -473,12 +511,24 @@ impl<'a> RawBg44<'a> {
 
 pub struct Iw44<'a> {
     _content: Field<'a>,
-    pub kind: Iw44Kind,
-    pub num_slices: u8,
+    kind: Iw44Kind,
+    num_slices: u8,
     body: Field<'a>,
 }
 
 impl<'a> Iw44<'a> {
+    pub fn kind(&self) -> Iw44Kind {
+        self.kind
+    }
+
+    pub fn num_slices(&self) -> u8 {
+        self.num_slices
+    }
+
+    pub fn body(&self) -> &'a [u8] {
+        self.body.bytes()
+    }
+
     fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
         let content = s.parent;
         let byte = s.byte()?;
@@ -513,10 +563,6 @@ impl<'a> Iw44<'a> {
             num_slices,
             body,
         })
-    }
-
-    pub fn body(&self) -> &'a [u8] {
-        self.body.bytes()
     }
 }
 
@@ -560,9 +606,23 @@ impl<'a> RawFgbz<'a> {
 }
 
 pub struct Fgbz<'a> {
-    pub version: crate::FgbzVersion,
-    pub palette: &'a [PaletteEntry],
-    pub indices: Option<FgbzIndices<'a>>,
+    version: crate::FgbzVersion,
+    palette: &'a [PaletteEntry],
+    indices: Option<FgbzIndices<'a>>,
+}
+
+impl<'a> Fgbz<'a> {
+    pub fn version(&self) -> crate::FgbzVersion {
+        self.version
+    }
+
+    pub fn palette(&self) -> &'a [PaletteEntry] {
+        self.palette
+    }
+
+    pub fn indices(&self) -> Option<&FgbzIndices<'a>> {
+        self.indices.as_ref()
+    }
 }
 
 pub struct FgbzIndices<'a> {
@@ -711,14 +771,26 @@ impl<'a> RawDirm<'a> {
 
 pub struct Dirm<'a> {
     content: Field<'a>,
-    pub version: crate::DirmVersion,
-    pub num_components: u16,
-    pub bundled: Option<Bundled<'a>>,
+    version: crate::DirmVersion,
+    num_components: u16,
+    bundled: Option<Bundled<'a>>,
     // FIXME maybe this should have its own struct, like FgbzIndices?
     bzz: Field<'a>,
 }
 
 impl<'a> Dirm<'a> {
+    pub fn version(&self) -> crate::DirmVersion {
+        self.version
+    }
+
+    pub fn num_components(&self) -> u16 {
+        self.num_components
+    }
+
+    pub fn bundled(&self) -> Option<&Bundled<'a>> {
+        self.bundled.as_ref()
+    }
+
     pub fn bzz_extra(&self) -> &'a [u8] {
         self.bzz.bytes()
     }
@@ -863,11 +935,15 @@ impl<'a> RawNavm<'a> {
 }
 
 pub struct DecodedNavm<'a> {
-    pub num_bookmarks: u16,
+    num_bookmarks: u16,
     body: Field<'a>,
 }
 
 impl<'a> DecodedNavm<'a> {
+    pub fn num_bookmarks(&self) -> u16 {
+        self.num_bookmarks
+    }
+
     pub fn parsing(&self) -> ParsingNavm<'a> {
         ParsingNavm { remaining: self.num_bookmarks, s: self.body.split() }
     }
