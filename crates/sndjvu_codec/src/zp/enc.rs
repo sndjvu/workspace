@@ -47,6 +47,10 @@ impl<'a> Out<Place<'a>> {
             self.dispense();
             self.dispense_countdown = 8;
         }
+        if self.delay > 0 {
+            self.delay -= 1;
+            return;
+        }
         self.ready = (self.ready << 1) | (b as u8);
         self.dispense_countdown -= 1;
     }
@@ -71,9 +75,10 @@ impl<'a> Out<Place<'a>> {
     }
 
     fn can(&self, num_decisions: u32) -> bool {
-        let mut bits = 8 - self.dispense_countdown;
-        bits += 16 * num_decisions;
+        // FIXME need to account for the current run counter, right?
+        let mut bits = 16 * num_decisions;
         bits += 24 + 1;
+        bits -= self.dispense_countdown;
         let bytes = (bits + 7) / 8;
         bytes as usize <= self.place.inner.as_slice().len()
     }
@@ -81,6 +86,7 @@ impl<'a> Out<Place<'a>> {
     fn fill(mut self) -> usize {
         while self.dispense_countdown > 0 {
             self.ready = (self.ready << 1) | 1;
+            self.dispense_countdown -= 1;
         }
         self.dispense();
         self.place.off
@@ -111,6 +117,21 @@ const THREE_EIGHTHS: u32 = 0x60_00;
 const ONE: u32 = 0x1_00_00;
 
 impl<'a> Encoder<'a> {
+    pub fn new(data: &'a mut [u8]) -> Self {
+        Self {
+            state: State { a: 0, u: 0 },
+            out: Out {
+                delay: 25,
+                buffer: 0xff_ff_ff,
+                run_counter: 0,
+                ready: 0,
+                dispense_countdown: 8,
+
+                place: Place { inner: data.iter_mut(), off: 0 },
+            }
+        }
+    }
+
     pub fn provision(self, num_decisions: u32) -> Update<Self, (usize, EncoderSave)> {
         if self.out.can(num_decisions) {
             Update::Success(self)

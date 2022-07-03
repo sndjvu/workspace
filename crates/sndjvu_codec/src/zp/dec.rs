@@ -181,6 +181,7 @@ impl<'a> Decoder<'a> {
         // TODO experiment with a u128 register
         // which would allow loading 12 bytes at a time (16 - 2 - 2)
         let mut b = [0; 4];
+        // FIXME panic message should mention provisioning
         b.copy_from_slice(&self.upcoming_bytes()[..4]);
         self.pos += 4;
         self.state.reload(u32::from_be_bytes(b));
@@ -188,11 +189,16 @@ impl<'a> Decoder<'a> {
 
     // FIXME is this correct?
     pub fn new(buf: &'a [u8]) -> Self {
-        let front = buf[..2].try_into().unwrap(); // XXX
+        // let front = buf[..2].try_into().unwrap(); // XXX
+        let (front, pos) = match buf {
+            &[] => ([0xff, 0xff], 0),
+            &[b_0] => ([b_0, 0xff], 1),
+            &[b_0, b_1, ..] => ([b_0, b_1], 2),
+        };
         let c = u16::from_be_bytes(front);
         Self {
             state: State::new(c),
-            pos: 2,
+            pos,
             input: Input::InBuf { buf, saved_plank: Vec::new() },
             #[cfg(debug_assertions)] remaining: 0,
         }

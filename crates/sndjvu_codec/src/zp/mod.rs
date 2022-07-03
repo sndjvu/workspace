@@ -289,3 +289,6 @@ pub use dec::Decoder;
 
 pub mod enc;
 pub use enc::Encoder;
+
+#[cfg(test)]
+mod tests;

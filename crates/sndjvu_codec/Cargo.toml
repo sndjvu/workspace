@@ -7,3 +7,6 @@ edition = "2021"
 [features]
 std = []
 bzz = []
+
+[dev-dependencies]
+proptest = "1.0.0"

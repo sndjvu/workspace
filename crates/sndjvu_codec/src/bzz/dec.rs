@@ -18,9 +18,8 @@
 //!
 //! These restrictions are lifted if you use the less convenient low-level interface.
 
-use crate::Update;
+use crate::{Update, zp};
 use super::{Speed, Symbol, Mtf, Scratch, NUM_CONTEXTS};
-use crate::zp;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{Display, Formatter};
@@ -174,8 +173,8 @@ impl<'a> Decoder<'a> {
                 marker: None,
                 mtf,
                 mtf_index: Some(3),
-                scratch,
             },
+            scratch,
         }))
     }
 }
@@ -205,28 +204,26 @@ impl DecoderSave {
 }
 
 // state that exists only during the decoding of a block
-struct BlockProgress<'b> {
+struct BlockProgress {
     size: u32,
     i: u32,
     marker: Option<u32>,
     mtf: Mtf,
     mtf_index: Option<u8>,
-    // the scratch buffer is "locked" throughout the decoding of a given block
-    // this prevents logic errors caused by using different scratch buffers
-    // before and after a suspend/resume
-    scratch: &'b mut Scratch,
 }
 
 pub struct DecodeBlock<'a, 'b> {
     zp: zp::Decoder<'a>,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
-    progress: BlockProgress<'b>,
+    progress: BlockProgress,
+    scratch: &'b mut Scratch,
 }
 
 pub struct DecodeBlockSave<'b> {
     zp: zp::dec::DecoderSave,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
-    progress: BlockProgress<'b>,
+    progress: BlockProgress,
+    scratch: &'b mut Scratch,
 }
 
 pub struct ShuffleBlock<'b> {
@@ -254,18 +251,18 @@ impl<'b> ShuffleBlock<'b> {
 
 impl<'b> DecodeBlockSave<'b> {
     pub fn resume<'a>(self, bzz: &'a [u8]) -> DecodeBlock<'a, 'b> {
-        DecodeBlock { zp: self.zp.resume(bzz), contexts: self.contexts, progress: self.progress }
+        DecodeBlock { zp: self.zp.resume(bzz), contexts: self.contexts, progress: self.progress, scratch: self.scratch }
     }
 
     pub fn seal<'a>(self) -> DecodeBlock<'a, 'b> {
-        DecodeBlock { zp: self.zp.seal(), contexts: self.contexts, progress: self.progress }
+        DecodeBlock { zp: self.zp.seal(), contexts: self.contexts, progress: self.progress, scratch: self.scratch }
     }
 }
 
 impl<'a, 'b> DecodeBlock<'a, 'b> {
     pub fn decode(self) -> Result<Update<(ShuffleBlock<'b>, Decoder<'a>), DecodeBlockSave<'b>>, Error>
     {
-        let Self { mut contexts, mut zp, mut progress } = self;
+        let Self { mut contexts, mut zp, mut progress, scratch } = self;
         while progress.i < progress.size {
             zp = match zp.provision(16) {
                 Update::Success(dec) => dec,
@@ -274,6 +271,7 @@ impl<'a, 'b> DecodeBlock<'a, 'b> {
                         contexts,
                         progress,
                         zp,
+                        scratch,
                     }))
                 }
             };
@@ -296,14 +294,14 @@ impl<'a, 'b> DecodeBlock<'a, 'b> {
                         },
                     });
                 }
-                progress.scratch.shadow.push(0);
+                scratch.shadow.push(0);
                 progress.i += 1;
                 continue;
             };
 
             progress.mtf_index = Some(next);
             let symbol = progress.mtf.do_rotation(next);
-            progress.scratch.shadow.push(symbol.get());
+            scratch.shadow.push(symbol.get());
             progress.i += 1;
         }
 
@@ -312,7 +310,7 @@ impl<'a, 'b> DecodeBlock<'a, 'b> {
 
         // ready to decode the next block header
         Ok(Update::Success((
-            ShuffleBlock { marker, scratch: progress.scratch },
+            ShuffleBlock { marker, scratch },
             Decoder {
                 contexts,
                 zp,
