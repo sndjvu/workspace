@@ -12,7 +12,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-use core::fmt::{Display, Formatter};
+use core::fmt::{Debug, Display, Formatter};
 
 #[derive(Clone, Copy, Debug)]
 pub struct TxtVersion(pub u8);
@@ -153,6 +153,77 @@ pub struct Cdc(u8);
 impl Cdc {
     pub fn get(self) -> u8 {
         self.0
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Bstr<B>(B);
+
+impl<B: AsRef<[u8]>> Debug for Bstr<B> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        // all copied from BurntSushi's regex-automata, with thanks
+
+        fn len_following(byte: u8) -> Option<usize> {
+            if byte <= 0x7F {
+                return Some(1);
+            } else if byte & 0b1100_0000 == 0b1000_0000 {
+                return None;
+            } else if byte <= 0b1101_1111 {
+                Some(2)
+            } else if byte <= 0b1110_1111 {
+                Some(3)
+            } else if byte <= 0b1111_0111 {
+                Some(4)
+            } else {
+                None
+            }
+        }
+
+        fn decode_char(bytes: &[u8]) -> Option<Result<char, u8>> {
+            if bytes.is_empty() {
+                return None;
+            }
+            let len = match len_following(bytes[0]) {
+                None => return Some(Err(bytes[0])),
+                Some(len) if len > bytes.len() => return Some(Err(bytes[0])),
+                Some(1) => return Some(Ok(bytes[0] as char)),
+                Some(len) => len,
+            };
+            match core::str::from_utf8(&bytes[..len]) {
+                Ok(s) => Some(Ok(s.chars().next().unwrap())),
+                Err(_) => Some(Err(bytes[0])),
+            }
+        }
+
+        write!(f, "\"")?;
+        let mut bytes = self.0.as_ref();
+        while let Some(result) = decode_char(bytes) {
+            let ch = match result {
+                Ok(ch) => ch,
+                Err(byte) => {
+                    write!(f, r"\x{:02x}", byte)?;
+                    bytes = &bytes[1..];
+                    continue;
+                }
+            };
+            bytes = &bytes[ch.len_utf8()..];
+            match ch {
+                '\0' => write!(f, "\\0")?,
+                // ASCII control characters except \0, \n, \r, \t
+                '\x01'..='\x08'
+                | '\x0b'
+                | '\x0c'
+                | '\x0e'..='\x19'
+                | '\x7f' => {
+                    write!(f, "\\x{:02x}", ch as u32)?;
+                }
+                '\n' | '\r' | '\t' | _ => {
+                    write!(f, "{}", ch.escape_debug())?;
+                }
+            }
+        }
+        write!(f, "\"")?;
+        Ok(())
     }
 }
 

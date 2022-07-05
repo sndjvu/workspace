@@ -1,10 +1,10 @@
-use super::{Field, Error, error_placeholder};
+use super::{StringField, Error, error_placeholder};
 use crate::annot::*;
 use alloc::vec::Vec;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Annotations<'a> {
-    full: Field<'a>,
+    full: StringField<'a>,
     pos: usize,
 }
 
@@ -34,7 +34,7 @@ impl<'a> Annotations<'a> {
         todo!()
     }
 
-    pub(super) fn new(full: Field<'a>) -> Self {
+    pub(super) fn new(full: StringField<'a>) -> Self {
         Self { full, pos: 0 }
     }
 

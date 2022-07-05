@@ -43,10 +43,8 @@
 //! elements or thumbnails. Trying to `feed` a one-past-the-end value will always return
 //! [`Progress::End`].
 
-// FIXME the DjVu spec is unclear about whether a trailing padding byte at the end of a FORM
-// chunk's content is allowed/required. we should accomodate the presence of this kind of
-// padding
-
+use crate::Bstr;
+use core::fmt::{Debug, Formatter};
 use core::num::NonZeroU8;
 #[cfg(sndjvu_backtrace)]
 use std::backtrace::Backtrace;
@@ -186,7 +184,7 @@ pub struct RawInfo<'a> {
 }
 
 impl<'a> RawInfo<'a> {
-    pub fn parse(&self) -> Result<Info<'a>, Error> {
+    pub fn parse(&self) -> Result<Info, Error> {
         let mut s = self.content.split();
         let width = s.u16_be()?;
         let height = s.u16_be()?;
@@ -202,7 +200,6 @@ impl<'a> RawInfo<'a> {
             _ => crate::PageRotation::Up, // see djvuchanges.txt
         };
         Ok(Info {
-            _content: self.content,
             width,
             height,
             version: crate::InfoVersion { major, minor },
@@ -213,40 +210,13 @@ impl<'a> RawInfo<'a> {
     }
 }
 
-pub struct Info<'a> {
-    _content: Field<'a>,
-    width: u16,
-    height: u16,
-    version: crate::InfoVersion,
-    dpi: u16,
-    gamma: u8,
-    rotation: crate::PageRotation,
-}
-
-impl<'a> Info<'a> {
-    pub fn width(&self) -> u16 {
-        self.width
-    }
-
-    pub fn height(&self) -> u16 {
-        self.height
-    }
-
-    pub fn version(&self) -> crate::InfoVersion {
-        self.version
-    }
-
-    pub fn dpi(&self) -> u16 {
-        self.dpi
-    }
-
-    pub fn gamma(&self) -> u8 {
-        self.gamma
-    }
-
-    pub fn rotation(&self) -> crate::PageRotation {
-        self.rotation
-    }
+pub struct Info {
+    pub width: u16,
+    pub height: u16,
+    pub version: crate::InfoVersion,
+    pub dpi: u16,
+    pub gamma: u8,
+    pub rotation: crate::PageRotation,
 }
 
 fn is_potential_chunk_id(xs: [u8; 4]) -> bool {
@@ -294,7 +264,7 @@ impl<'a> Element<'a> {
 }
 
 pub struct RawAnta<'a> {
-    content: Field<'a>,
+    content: StringField<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
@@ -317,12 +287,12 @@ impl<'a> RawAntz<'a> {
     }
 
     pub fn decoded<'dec>(&self, decoded: &'dec [u8]) -> Ant<'dec> {
-        Ant { content: self.content.decoded(decoded) }
+        Ant { content: StringField(self.content.decoded(decoded)) }
     }
 }
 
 pub struct Ant<'a> {
-    content: Field<'a>,
+    content: StringField<'a>,
 }
 
 impl<'a> Ant<'a> {
@@ -360,25 +330,22 @@ impl<'a> RawTxtz<'a> {
 }
 
 pub struct Txt<'a> {
-    _content: Field<'a>,
-    text: &'a [u8],
-    version: crate::TxtVersion,
-    zones: &'a [Zone],
+    pub text: &'a [u8],
+    pub version: crate::TxtVersion,
+    pub zones: &'a [Zone],
+}
+
+impl<'a> Debug for Txt<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Txt")
+            .field("text", &Bstr(self.text))
+            .field("version", &self.version)
+            .field("zones", &self.zones)
+            .finish()
+    }
 }
 
 impl<'a> Txt<'a> {
-    pub fn text(&self) -> &'a [u8] {
-        self.text
-    }
-
-    pub fn version(&self) -> crate::TxtVersion {
-        self.version
-    }
-
-    pub fn zones(&self) -> &'a [Zone] {
-        self.zones
-    }
-
     fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
         let content = s.parent;
         let len = s.u24_be()?;
@@ -387,7 +354,6 @@ impl<'a> Txt<'a> {
         let raw_zones = s.rest_arrays()?;
         let zones = Zone::cast_slice(raw_zones)?;
         Ok(Txt {
-            _content: content,
             text,
             version,
             zones,
@@ -510,25 +476,12 @@ impl<'a> RawBg44<'a> {
 }
 
 pub struct Iw44<'a> {
-    _content: Field<'a>,
-    kind: Iw44Kind,
-    num_slices: u8,
-    body: Field<'a>,
+    pub kind: Iw44Kind,
+    pub num_slices: u8,
+    pub body: &'a [u8],
 }
 
 impl<'a> Iw44<'a> {
-    pub fn kind(&self) -> Iw44Kind {
-        self.kind
-    }
-
-    pub fn num_slices(&self) -> u8 {
-        self.num_slices
-    }
-
-    pub fn body(&self) -> &'a [u8] {
-        self.body.bytes()
-    }
-
     fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
         let content = s.parent;
         let byte = s.byte()?;
@@ -558,14 +511,14 @@ impl<'a> Iw44<'a> {
         };
         let body = s.rest();
         Ok(Iw44 {
-            _content: content,
             kind,
             num_slices,
-            body,
+            body: body.bytes(),
         })
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum Iw44Kind {
     Head {
         version: crate::Iw44Version,
@@ -680,14 +633,14 @@ impl PaletteIndex {
 }
 
 pub struct RawIncl<'a> {
-    content: Field<'a>,
+    content: StringField<'a>,
     after_pos: Pos,
     end_pos: Pos,
 }
 
 impl<'a> RawIncl<'a> {
     pub fn target_id(&self) -> &'a [u8] {
-        self.content.bytes()
+        self.content.0.bytes()
     }
 }
 
@@ -722,7 +675,7 @@ pub struct RawSmmr<'a> {
 }
 
 pub struct Chunk<'a> {
-    kind: [u8; 4],
+    kind: Bstr<[u8; 4]>,
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
@@ -730,7 +683,7 @@ pub struct Chunk<'a> {
 
 impl<'a> Chunk<'a> {
     pub fn kind(&self) -> [u8; 4] {
-        self.kind
+        self.kind.0
     }
 
     pub fn content(&self) -> &'a [u8] {
@@ -837,13 +790,25 @@ impl<'a> Dirm<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone)]
 pub struct ComponentMeta<'a> {
     pub len: u32,
     pub kind: crate::ComponentKind,
     pub id: &'a [u8],
     pub name: Option<&'a [u8]>,
     pub title: Option<&'a [u8]>,
+}
+
+impl<'a> Debug for ComponentMeta<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ComponentMeta")
+            .field("len", &self.len)
+            .field("kind", &self.kind)
+            .field("id", &Bstr(self.id))
+            .field("name", &self.name.map(Bstr))
+            .field("title", &self.title.map(Bstr))
+            .finish()
+    }
 }
 
 pub struct Bundled<'a> {
@@ -977,10 +942,21 @@ impl<'a> ParsingNavm<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct Bookmark<'a> {
     pub num_children: u8,
     pub description: &'a [u8],
     pub url: &'a [u8],
+}
+
+impl<'a> Debug for Bookmark<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Bookmark")
+            .field("num_children", &self.num_children)
+            .field("description", &Bstr(self.description))
+            .field("url", &Bstr(self.url))
+            .finish()
+    }
 }
 
 /// Parsed representation of the start of a component.
@@ -1046,7 +1022,7 @@ impl ElementP {
         let after_pos = s.pos();
         let end_pos = self.end_pos;
         let element = match &kind {
-            b"ANTa" => Element::Anta(RawAnta { content, after_pos, end_pos }),
+            b"ANTa" => Element::Anta(RawAnta { content: StringField(content), after_pos, end_pos }),
             b"ANTz" => Element::Antz(RawAntz { content, after_pos, end_pos }),
             b"TXTa" => Element::Txta(RawTxta { content, after_pos, end_pos }),
             b"TXTz" => Element::Txtz(RawTxtz { content, after_pos, end_pos }),
@@ -1055,11 +1031,11 @@ impl ElementP {
             b"FG44" => Element::Fg44(RawFg44 { content, after_pos, end_pos }),
             b"BG44" => Element::Bg44(RawBg44 { content, after_pos, end_pos }),
             b"FGbz" => Element::Fgbz(RawFgbz { content, after_pos, end_pos }),
-            b"INCL" => Element::Incl(RawIncl { content, after_pos, end_pos }),
+            b"INCL" => Element::Incl(RawIncl { content: StringField(content), after_pos, end_pos }),
             b"BGjp" => Element::Bgjp(RawBgjp { content, after_pos, end_pos }),
             b"FGjp" => Element::Fgjp(RawFgjp { content, after_pos, end_pos }),
             b"Smmr" => Element::Smmr(RawSmmr { content, after_pos, end_pos }),
-            _ => Element::Unknown(Chunk { kind, content, after_pos, end_pos }),
+            _ => Element::Unknown(Chunk { kind: Bstr(kind), content, after_pos, end_pos }),
         };
         Ok(advanced(element, s))
     }
@@ -1326,6 +1302,10 @@ impl<'a> Field<'a> {
         }
     }
 }
+
+// TODO custom Debug impl using Bstr
+#[derive(Clone, Copy)]
+struct StringField<'a>(Field<'a>);
 
 struct SplitInner<'a> {
     parent: Field<'a>,
