@@ -186,16 +186,16 @@ impl<'a> Encoder<'a> {
         let State { mut a, mut u } = self.state;
         let z = HALF + a / 2;
         if decision {
-            a = z;
-            if a >= HALF {
+            a = a + ONE - z;
+            u = u + ONE - z;
+            while a >= HALF {
                 self.out.emit(u);
                 a = (a << 1) & 0xff_ff;
                 u = (u << 1) & 0xff_ff;
             }
         } else {
-            a = a + ONE - z;
-            u = u + ONE - z;
-            while a >= HALF {
+            a = z;
+            if a >= HALF {
                 self.out.emit(u);
                 a = (a << 1) & 0xff_ff;
                 u = (u << 1) & 0xff_ff;
