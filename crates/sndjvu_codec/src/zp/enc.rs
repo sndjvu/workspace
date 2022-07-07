@@ -40,19 +40,19 @@ impl<'a> Out<Place<'a>> {
         // FIXME better panic message (mention provisioning)
         *self.place.inner.next().unwrap() = take(&mut self.ready);
         self.place.off += 1;
+        self.dispense_countdown = 8;
     }
 
     fn bit(&mut self, b: bool) {
-        if self.dispense_countdown == 0 {
-            self.dispense();
-            self.dispense_countdown = 8;
-        }
         if self.delay > 0 {
             self.delay -= 1;
             return;
         }
         self.ready = (self.ready << 1) | (b as u8);
         self.dispense_countdown -= 1;
+        if self.dispense_countdown == 0 {
+            self.dispense();
+        }
     }
 
     fn run(&mut self, head: bool) {
@@ -64,7 +64,8 @@ impl<'a> Out<Place<'a>> {
     }
 
     fn emit(&mut self, u: u32) {
-        let buf = 1u32.wrapping_sub(u >> 15).wrapping_add(self.buffer << 1);
+        let b = 1u32.wrapping_sub(u >> 15);
+        let buf = (self.buffer << 1).wrapping_add(b);
         self.buffer = buf & 0xff_ff_ff;
         match buf >> 24 {
             0x01 => self.run(true),
@@ -84,11 +85,9 @@ impl<'a> Out<Place<'a>> {
     }
 
     fn fill(mut self) -> usize {
-        while self.dispense_countdown > 0 {
-            self.ready = (self.ready << 1) | 1;
-            self.dispense_countdown -= 1;
+        while self.dispense_countdown < 8 {
+            self.bit(true);
         }
-        self.dispense();
         self.place.off
     }
 }
