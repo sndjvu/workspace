@@ -3,6 +3,8 @@ use proptest::prelude::*;
 use super::{Context, enc, Encoder, dec, Decoder};
 use crate::Update;
 
+const NUM_CONTEXTS: usize = 100;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Record {
     context: Option<usize>,
@@ -19,11 +21,11 @@ prop_compose! {
 
 proptest! {
     #[test]
-    fn round_trip(records in prop::collection::vec(record(100), 1..1_000)) {
+    fn round_trip(records in prop::collection::vec(record(NUM_CONTEXTS), 1..1_000)) {
         use std::{vec, format};
 
-        let mut contexts = [Context::NEW; 100];
-        let mut buf = vec![0xff; 8 * records.len()];
+        let mut contexts = [Context::NEW; NUM_CONTEXTS];
+        let mut buf = vec![0xff; 8 * records.len()]; // XXX
         let mut encoder = match Encoder::new(&mut buf[..]).provision(records.len() as u32) {
             Update::Success(enc) => enc,
             Update::Suspend(_) => panic!(),
@@ -34,10 +36,14 @@ proptest! {
                 Some(i) => encoder.encode(decision, &mut contexts[i]),
             }
         }
-        let _end = encoder.flush();
-        let mut decoder = match Decoder::new(&buf[..]).provision(records.len() as u32) {
+        let end = encoder.flush();
+        contexts = [Context::NEW; NUM_CONTEXTS];
+        let mut decoder = match Decoder::new(&buf[..end]).provision(records.len() as u32) {
             Update::Success(dec) => dec,
-            Update::Suspend(_) => panic!(),
+            Update::Suspend(save) => match save.seal().provision(records.len() as u32) {
+                Update::Success(dec) => dec,
+                Update::Suspend(_) => unreachable!(),
+            }
         };
         for &Record { context, decision } in &records {
             match context {
