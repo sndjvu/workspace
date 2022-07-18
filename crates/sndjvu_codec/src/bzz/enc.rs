@@ -47,7 +47,7 @@ pub(super) fn bwt(input: &[u8], scratch: &mut Scratch) -> u32 {
     shadow.clear();
     let mut marker = None;
     shadow.extend(shifts.iter().zip(0..).map(|(&shift, k)| {
-        let mut i = shift as i32 - 1;
+        let i = shift as i32 - 1;
         let c = if i < 0 {
             marker = Some(k);
             0x00
@@ -111,9 +111,16 @@ impl<'a> Encoder<'a> {
         };
 
         // important: don't BWT until we know encoding can go forward
-        let mut zp = match self.zp.provision(24 + 2) {
+        let mut zp = match self.zp.provision(24 + 2 + 24) {
             Update::Success(enc) => enc,
-            Update::Suspend(_) => todo!(),
+            Update::Suspend((off, zp)) => {
+                return Update::Suspend((off, EncoderSave {
+                    zp,
+                    array: self.array,
+                    array_inv: self.array_inv,
+                    contexts: self.contexts,
+                }));
+            }
         };
 
         let marker = bwt(data, scratch);
@@ -139,12 +146,6 @@ impl<'a> Encoder<'a> {
             mtf_index: Some(3),
         };
 
-        // so that flush can be infallible
-        zp = match zp.provision(24) {
-            Update::Success(enc) => enc,
-            Update::Suspend(_) => todo!(),
-        };
-
         Update::Success(EncodeBlock {
             progress,
             scratch,
@@ -161,6 +162,20 @@ impl<'a> Encoder<'a> {
 
 pub struct EncoderSave {
     zp: zp::enc::EncoderSave,
+    array: Box<[Symbol; 256]>,
+    array_inv: Box<[u8; 256]>,
+    contexts: Box<[zp::Context; NUM_CONTEXTS]>,
+}
+
+impl EncoderSave {
+    pub fn resume(self, data: &mut [u8]) -> Encoder<'_> {
+        Encoder {
+            zp: self.zp.resume(data),
+            array: self.array,
+            array_inv: self.array_inv,
+            contexts: self.contexts,
+        }
+    }
 }
 
 pub struct EncodeBlock<'a, 'b> {
@@ -179,12 +194,19 @@ struct BlockProgress {
 }
 
 impl<'a, 'b> EncodeBlock<'a, 'b> {
-    pub fn encode(mut self) -> Update<Encoder<'a>, (usize, EncodeBlockSave<'b>)> {
+    pub fn encode(self) -> Update<Encoder<'a>, (usize, EncodeBlockSave<'b>)> {
         let Self { mut contexts, mut zp, mut progress, scratch } = self;
         while progress.i < progress.size {
             zp = match zp.provision(16) {
                 Update::Success(enc) => enc,
-                Update::Suspend(_) => todo!(),
+                Update::Suspend((off, zp)) => {
+                    return Update::Suspend((off, EncodeBlockSave {
+                        contexts,
+                        zp,
+                        progress,
+                        scratch,
+                    }));
+                }
             };
 
             let symbol = Symbol(scratch.shadow[progress.i as usize]);
@@ -227,11 +249,24 @@ impl<'a, 'b> EncodeBlock<'a, 'b> {
 }
 
 pub struct EncodeBlockSave<'b> {
+    contexts: Box<[zp::Context; NUM_CONTEXTS]>,
+    progress: BlockProgress,
     zp: zp::enc::EncoderSave,
     scratch: &'b mut Scratch,
 }
 
-fn estimate_compressed_size(plain: &[u8]) -> usize {
+impl<'b> EncodeBlockSave<'b> {
+    pub fn resume<'a>(self, data: &'a mut [u8]) -> EncodeBlock<'a, 'b> {
+        EncodeBlock {
+            contexts: self.contexts,
+            progress: self.progress,
+            zp: self.zp.resume(data),
+            scratch: self.scratch,
+        }
+    }
+}
+
+fn estimate_compressed_size(_plain: &[u8]) -> usize {
     todo!()
 }
 
