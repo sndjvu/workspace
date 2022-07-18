@@ -64,7 +64,7 @@ fn postincrement(n: &mut u32) -> u32 {
 }
 
 // inverts the Burrows-Wheeler transform, using the same algorithm as DjVuLibre
-fn bwt_inv(marker: u32, slice: &mut [u8], scratch: &mut Scratch) {
+pub(super) fn bwt_inv(marker: u32, slice: &mut [u8], scratch: &mut Scratch) {
     let Scratch {
         // like djvulibre's posc
         ref mut shadow,

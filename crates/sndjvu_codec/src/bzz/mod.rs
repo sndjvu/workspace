@@ -27,7 +27,7 @@ impl Symbol {
 #[derive(Debug)]
 pub struct Scratch {
     shadow: Vec<u8>,
-    counts: Box<[u32; 256]>,
+    counts: Box<[u32; 256]>, // XXX not needed for compression?
     ranks: Vec<u32>,
 }
 
@@ -156,3 +156,6 @@ pub use dec::{decompress, decompress_oneshot};
 
 pub mod enc;
 pub use enc::{compress, compress_oneshot};
+
+#[cfg(test)]
+mod tests;

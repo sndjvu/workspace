@@ -18,9 +18,45 @@ use crate::{Update, zp};
 use super::{Scratch, Speed, MtfWithInv, Symbol, NUM_CONTEXTS};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::cmp::Ordering;
 
-fn bwt(input: &[u8], scratch: &mut Scratch) -> u32 {
-    todo!()
+fn find_difference(left: &[u8], right: &[u8]) -> usize {
+    left.iter().zip(right).take_while(|(&l, &r)| l == r).count()
+}
+
+pub(super) fn bwt(input: &[u8], scratch: &mut Scratch) -> u32 {
+    let Scratch { ref mut shadow, ranks: ref mut shifts, .. } = *scratch;
+
+    shadow.clear();
+    shadow.extend_from_slice(input);
+    shadow.push(0x00); // fake EOB
+
+    shifts.clear();
+    shifts.extend(0..=input.len() as u32);
+    shifts.sort_by(|&ls, &rs| {
+        let pos = find_difference(&shadow[ls as usize..], &shadow[rs as usize..]);
+        let (li, ri) = (ls as usize + pos, rs as usize + pos);
+        match (li == shadow.len(), ri == shadow.len()) {
+            (false, false) => shadow[li].cmp(&shadow[ri]),
+            (false, true) => Ordering::Greater,
+            (true, false) => Ordering::Less,
+            (true, true) => Ordering::Equal,
+        }
+    });
+
+    shadow.clear();
+    let mut marker = None;
+    shadow.extend(shifts.iter().zip(0..).map(|(&shift, k)| {
+        let mut i = shift as i32 - 1;
+        let c = if i < 0 {
+            marker = Some(k);
+            0x00
+        } else {
+            input[i as usize]
+        };
+        c
+    }));
+    marker.unwrap()
 }
 
 fn encode_u24(zp: &mut zp::Encoder<'_>, mut val: u32) {
@@ -229,13 +265,15 @@ pub fn compress_oneshot(plain: &[u8], blocks: Blocks) -> Vec<u8> {
 }
 
 /// A strategy for dividing data into blocks for compression.
+#[derive(Default)]
 #[non_exhaustive]
 pub enum Blocks {
     /// The implementation's default strategy.
     ///
     /// This is not guaranteed to do anything in particular.
+    #[default]
     Default,
-    /// Split the input data into zero or more blocks of fixed size, followed by a shorter final
+    /// Split the input data into zero or more blocks of fixed size, possibly followed by a shorter final
     /// block.
     Size(usize),
 }
