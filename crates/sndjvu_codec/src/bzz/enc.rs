@@ -266,27 +266,34 @@ impl<'b> EncodeBlockSave<'b> {
     }
 }
 
-fn estimate_compressed_size(_plain: &[u8]) -> usize {
-    todo!()
+fn estimate_compressed_size(plain: &[u8]) -> usize {
+    plain.len() / 5 // XXX
 }
 
 pub fn compress(plain: &[u8], out: &mut Vec<u8>, scratch: &mut Scratch, blocks: Blocks) {
+    fn grow(out: &mut Vec<u8>, off: usize) -> &mut [u8] {
+        // XXX proper growth strategy
+        let prev_len = out.len();
+        out.resize(prev_len + 1000, 0x00);
+        &mut out[off..]
+    }
+
     let orig_len = out.len();
     out.resize(orig_len + estimate_compressed_size(plain), 0x00);
     let mut encoder = Encoder::new(&mut out[orig_len..]);
     for block in blocks.split(plain) {
-        // XXX this loop is gross
-        loop {
-            let block_enc = match encoder.block(block, scratch) {
-                Update::Success(enc) => enc,
-                Update::Suspend(_) => todo!(),
+        let mut block_encoder = loop {
+            encoder = match encoder.block(block, scratch) {
+                Update::Success(enc) => break enc,
+                Update::Suspend((off, save)) => save.resume(grow(out, off)),
             };
-            encoder = match block_enc.encode() {
-                Update::Success(enc) => enc,
-                Update::Suspend(_) => todo!(),
+        };
+        encoder = loop {
+            block_encoder = match block_encoder.encode() {
+                Update::Success(enc) => break enc,
+                Update::Suspend((off, save)) => save.resume(grow(out, off)),
             };
-            break;
-        }
+        };
     }
     let off = encoder.flush();
     out.truncate(orig_len + off);
@@ -316,7 +323,7 @@ pub enum Blocks {
 impl Blocks {
     fn split(self, plain: &[u8]) -> Box<dyn Iterator<Item = &[u8]> + '_> {
         match self {
-            Self::Default => todo!(),
+            Self::Default => Box::new(plain.chunks(1000)), // XXX
             Self::Size(z) => Box::new(plain.chunks(z)),
         }
     }
