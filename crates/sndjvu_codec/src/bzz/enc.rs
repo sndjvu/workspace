@@ -271,6 +271,8 @@ fn estimate_compressed_size(plain: &[u8]) -> usize {
 }
 
 pub fn compress(plain: &[u8], out: &mut Vec<u8>, scratch: &mut Scratch, blocks: Blocks) {
+    use core::mem::ManuallyDrop;
+
     fn grow(out: &mut Vec<u8>, off: usize) -> &mut [u8] {
         // XXX proper growth strategy
         let prev_len = out.len();
@@ -280,22 +282,22 @@ pub fn compress(plain: &[u8], out: &mut Vec<u8>, scratch: &mut Scratch, blocks: 
 
     let orig_len = out.len();
     out.resize(orig_len + estimate_compressed_size(plain), 0x00);
-    let mut encoder = Encoder::new(&mut out[orig_len..]);
+    let mut encoder = ManuallyDrop::new(Encoder::new(&mut out[orig_len..]));
     for block in blocks.split(plain) {
         let mut block_encoder = loop {
-            encoder = match encoder.block(block, scratch) {
-                Update::Success(enc) => break enc,
-                Update::Suspend((off, save)) => save.resume(grow(out, off)),
+            encoder = match ManuallyDrop::into_inner(encoder).block(block, scratch) {
+                Update::Success(blk) => break ManuallyDrop::new(blk),
+                Update::Suspend((off, save)) => ManuallyDrop::new(save.resume(grow(out, off))),
             };
         };
         encoder = loop {
-            block_encoder = match block_encoder.encode() {
-                Update::Success(enc) => break enc,
-                Update::Suspend((off, save)) => save.resume(grow(out, off)),
+            block_encoder = match ManuallyDrop::into_inner(block_encoder).encode() {
+                Update::Success(enc) => break ManuallyDrop::new(enc),
+                Update::Suspend((off, save)) => ManuallyDrop::new(save.resume(grow(out, off))),
             };
         };
     }
-    let off = encoder.flush();
+    let off = ManuallyDrop::into_inner(encoder).flush();
     out.truncate(orig_len + off);
 }
 
