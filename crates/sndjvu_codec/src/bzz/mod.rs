@@ -155,7 +155,7 @@ pub mod dec;
 pub use dec::{decompress, decompress_oneshot};
 
 pub mod enc;
-pub use enc::{compress, compress_oneshot};
+pub use enc::{compress, compress_oneshot, Blocks};
 
 #[cfg(test)]
 mod tests;
