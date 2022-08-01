@@ -1,24 +1,7 @@
 //! BZZ decoding.
-//!
-//! This module provides both high-level and low-level interfaces to BZZ
-//! decoding. The high-level interface consists of [`decompress`] and [`decompress_oneshot`].
-//! The low-level interface consists of the following types and their associated functions:
-//!
-//! - [`Decoder`]
-//! - [`DecoderSave`]
-//! - [`DecodeBlock`]
-//! - [`DecodeBlockSave`]
-//! - [`ShuffleBlock`]
-//!
-//! The following restrictions apply to the high-level interface:
-//!
-//! - the input consists of a single `&[u8]` 
-//! - the output is concatenated into a single `Vec<u8>`
-//! - decompression is entirely sequential (no concurrency)
-//!
-//! These restrictions are lifted if you use the less convenient low-level interface.
 
-use crate::{Update, zp};
+use crate::Step::{self, *};
+use crate::zp;
 use super::{Speed, Symbol, Mtf, Scratch, NUM_CONTEXTS};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -119,27 +102,27 @@ fn decode_u8(
     n - (1 << num_bits)
 }
 
-pub struct Decoder<'a> {
+pub struct Start<'dec> {
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
-    zp: zp::Decoder<'a>,
+    zp: zp::Decoder<'dec>,
     // reuse the allocation, since it has to be boxed anyway
     mtf_array: Box<[Symbol; 256]>,
 }
 
-impl<'a> Decoder<'a> {
-    pub fn new(bzz: &'a [u8]) -> Self {
-        Self {
-            contexts: Box::new([zp::Context::NEW; NUM_CONTEXTS]),
-            zp: zp::Decoder::new(bzz),
-            mtf_array: Box::new([Symbol(0); 256]),
-        }
+pub fn start(bzz: &[u8]) -> Start<'_> {
+    Start {
+        contexts: Box::new([zp::Context::NEW; NUM_CONTEXTS]),
+        zp: zp::Decoder::new(bzz),
+        mtf_array: Box::new([Symbol(0); 256]),
     }
+}
 
-    pub fn block<'b>(self, scratch: &'b mut Scratch) -> Update<Option<DecodeBlock<'a, 'b>>, DecoderSave> {
+impl<'dec> Start<'dec> {
+    pub fn step<'scratch>(self, scratch: &'scratch mut Scratch) -> Step<Option<Block<'dec, 'scratch>>, StartSave> {
         let mut zp = match self.zp.provision(24 + 2) {
-            Update::Success(dec) => dec,
-            Update::Suspend(zp) => {
-                return Update::Suspend(DecoderSave {
+            Complete(dec) => dec,
+            Incomplete(zp) => {
+                return Incomplete(StartSave {
                     contexts: self.contexts,
                     mtf_array: self.mtf_array,
                     zp
@@ -149,7 +132,7 @@ impl<'a> Decoder<'a> {
 
         let block_size = decode_u24(&mut zp);
         if block_size == 0 {
-            return Update::Success(None);
+            return Complete(None);
         }
 
         let speed = if zp.decode_passthrough() {
@@ -164,7 +147,7 @@ impl<'a> Decoder<'a> {
         let mtf = Mtf::new(speed, self.mtf_array);
 
         scratch.shadow.clear();
-        Update::Success(Some(DecodeBlock {
+        Complete(Some(Block {
             contexts: self.contexts,
             zp,
             progress: BlockProgress {
@@ -179,23 +162,23 @@ impl<'a> Decoder<'a> {
     }
 }
 
-pub struct DecoderSave {
+pub struct StartSave {
     zp: zp::dec::DecoderSave,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
     mtf_array: Box<[Symbol; 256]>,
 }
 
-impl DecoderSave {
-    pub fn resume(self, bzz: &[u8]) -> Decoder<'_> {
-        Decoder {
+impl StartSave {
+    pub fn resume(self, bzz: &[u8]) -> Start<'_> {
+        Start {
             zp: self.zp.resume(bzz),
             contexts: self.contexts,
             mtf_array: self.mtf_array,
         }
     }
 
-    pub fn seal<'a>(self) -> Decoder<'a> {
-        Decoder {
+    pub fn seal<'dec>(self) -> Start<'dec> {
+        Start {
             zp: self.zp.seal(),
             contexts: self.contexts,
             mtf_array: self.mtf_array,
@@ -212,31 +195,31 @@ struct BlockProgress {
     mtf_index: Option<u8>,
 }
 
-pub struct DecodeBlock<'a, 'b> {
-    zp: zp::Decoder<'a>,
+pub struct Block<'dec, 'scratch> {
+    zp: zp::Decoder<'dec>,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
     progress: BlockProgress,
-    scratch: &'b mut Scratch,
+    scratch: &'scratch mut Scratch,
 }
 
-pub struct DecodeBlockSave<'b> {
+pub struct BlockSave<'scratch> {
     zp: zp::dec::DecoderSave,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
     progress: BlockProgress,
-    scratch: &'b mut Scratch,
+    scratch: &'scratch mut Scratch,
 }
 
-pub struct ShuffleBlock<'b> {
+pub struct Shuffle<'scratch> {
     marker: u32,
-    scratch: &'b mut Scratch,
+    scratch: &'scratch mut Scratch,
 }
 
-impl<'b> ShuffleBlock<'b> {
+impl<'scratch> Shuffle<'scratch> {
     pub fn len(&self) -> usize {
         self.scratch.shadow.len() - 1
     }
 
-    pub fn shuffle(self, out: &mut [u8]) {
+    pub fn run(self, out: &mut [u8]) {
         if out.len() != self.len() {
             panic!(
                 "usage error: passed a slice of the wrong length to `ShuffleBlock::shuffle` \
@@ -249,25 +232,24 @@ impl<'b> ShuffleBlock<'b> {
     }
 }
 
-impl<'b> DecodeBlockSave<'b> {
-    pub fn resume<'a>(self, bzz: &'a [u8]) -> DecodeBlock<'a, 'b> {
-        DecodeBlock { zp: self.zp.resume(bzz), contexts: self.contexts, progress: self.progress, scratch: self.scratch }
+impl<'scratch> BlockSave<'scratch> {
+    pub fn resume<'dec>(self, bzz: &'dec [u8]) -> Block<'dec, 'scratch> {
+        Block { zp: self.zp.resume(bzz), contexts: self.contexts, progress: self.progress, scratch: self.scratch }
     }
 
-    pub fn seal<'a>(self) -> DecodeBlock<'a, 'b> {
-        DecodeBlock { zp: self.zp.seal(), contexts: self.contexts, progress: self.progress, scratch: self.scratch }
+    pub fn seal<'dec>(self) -> Block<'dec, 'scratch> {
+        Block { zp: self.zp.seal(), contexts: self.contexts, progress: self.progress, scratch: self.scratch }
     }
 }
 
-impl<'a, 'b> DecodeBlock<'a, 'b> {
-    pub fn decode(self) -> Result<Update<(ShuffleBlock<'b>, Decoder<'a>), DecodeBlockSave<'b>>, Error>
-    {
+impl<'dec, 'scratch> Block<'dec, 'scratch> {
+    pub fn step(self) -> Result<Step<(Shuffle<'scratch>, Start<'dec>), BlockSave<'scratch>>, Error> {
         let Self { mut contexts, mut zp, mut progress, scratch } = self;
         while progress.i < progress.size {
             zp = match zp.provision(16) {
-                Update::Success(dec) => dec,
-                Update::Suspend(zp) => {
-                    return Ok(Update::Suspend(DecodeBlockSave {
+                Complete(dec) => dec,
+                Incomplete(zp) => {
+                    return Ok(Incomplete(BlockSave {
                         contexts,
                         progress,
                         zp,
@@ -309,9 +291,9 @@ impl<'a, 'b> DecodeBlock<'a, 'b> {
         let marker = progress.marker.ok_or(Error { kind: ErrorKind::MissingMarker })?;
 
         // ready to decode the next block header
-        Ok(Update::Success((
-            ShuffleBlock { marker, scratch },
-            Decoder {
+        Ok(Complete((
+            Shuffle { marker, scratch },
+            Start {
                 contexts,
                 zp,
                 mtf_array: progress.mtf.into_inner(),
@@ -326,26 +308,26 @@ pub fn decompress(
     buf: &mut Vec<u8>,
     scratch: &mut Scratch,
 ) -> Result<(), Error> {
-    let mut decoder = Decoder::new(bzz);
+    let mut start = start(bzz);
     loop {
-        match decoder.block(scratch) {
-            Update::Success(None) => break,
-            Update::Success(Some(mut block)) => {
+        match start.step(scratch) {
+            Complete(None) => break,
+            Complete(Some(mut block)) => {
                 loop {
-                    match block.decode()? {
-                        Update::Success((shuf, rest)) => {
+                    match block.step()? {
+                        Complete((shuf, rest)) => {
                             let len = shuf.len();
                             let mark = buf.len();
                             buf.resize(mark + len, 0);
-                            shuf.shuffle(&mut buf[mark..]);
-                            decoder = rest;
+                            shuf.run(&mut buf[mark..]);
+                            start = rest;
                             break;
                         }
-                        Update::Suspend(save) => block = save.seal(),
+                        Incomplete(save) => block = save.seal(),
                     }
                 }
             }
-            Update::Suspend(save) => decoder = save.seal(),
+            Incomplete(save) => start = save.seal(),
         }
     }
     Ok(())

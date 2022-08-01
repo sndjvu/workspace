@@ -1,30 +1,18 @@
 //! BZZ encoding.
-//!
-//! The order of operations is
-//!
-//! 1. Burrows-Wheeler transform
-//! 2. encode block header
-//! 3. encode block
-//! 4. GOTO 1
-//!
-//! We separate 1-2 from 3-4 to permit overlapping; it also just makes
-//! the code clearer. We end up with two "stages", whereas `crate::bzz::enc`
-//! has three, because in that case "decode block header" and
-//! "inverse Burrows-Wheeler transform" are not successive, and we still need
-//! the block header to be a separate stage to allow the caller to manage
-//! memory allocation.
 
-use crate::{Update, zp};
+use crate::Step::{self, *};
+use crate::zp;
 use super::{Scratch, Speed, MtfWithInv, Symbol, NUM_CONTEXTS};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
-fn find_difference(left: &[u8], right: &[u8]) -> usize {
-    left.iter().zip(right).take_while(|(&l, &r)| l == r).count()
-}
-
 pub(super) fn bwt(input: &[u8], scratch: &mut Scratch) -> u32 {
+    fn find_difference(left: &[u8], right: &[u8]) -> usize {
+        // TODO SIMD or something
+        left.iter().zip(right).take_while(|(&l, &r)| l == r).count()
+    }
+
     let Scratch { ref mut shadow, ranks: ref mut shifts, .. } = *scratch;
 
     shadow.clear();
@@ -33,6 +21,7 @@ pub(super) fn bwt(input: &[u8], scratch: &mut Scratch) -> u32 {
 
     shifts.clear();
     shifts.extend(0..=input.len() as u32);
+    // TODO optimize this
     shifts.sort_by(|&ls, &rs| {
         let pos = find_difference(&shadow[ls as usize..], &shadow[rs as usize..]);
         let (li, ri) = (ls as usize + pos, rs as usize + pos);
@@ -85,36 +74,37 @@ fn encode_u8(
     }
 }
 
-pub struct Encoder<'a> {
-    zp: zp::Encoder<'a>,
+pub fn start(buf: &mut [u8]) -> Start<'_> {
+    Start {
+        zp,
+        array: Box::new(super::MTF_IDENTITY),
+        array_inv: Box::new(super::MTF_IDENTITY_INV),
+        contexts: Box::new([zp::Context::NEW; NUM_CONTEXTS]),
+    }
+}
+
+pub struct Start<'enc> {
+    zp: zp::Encoder<'enc>,
     array: Box<[Symbol; 256]>,
     array_inv: Box<[u8; 256]>,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
 }
 
-impl<'a> Encoder<'a> {
-    pub fn new(buf: &'a mut [u8]) -> Self {
-        Self {
-            zp: zp::Encoder::new(buf),
-            array: Box::new(super::MTF_IDENTITY),
-            array_inv: Box::new(super::MTF_IDENTITY_INV),
-            contexts: Box::new([zp::Context::NEW; NUM_CONTEXTS]),
-        }
-    }
-
-    pub fn block<'b>(self, data: &[u8], scratch: &'b mut Scratch) -> Update<EncodeBlock<'a, 'b>, (usize, EncoderSave)> {
+impl<'enc> Start<'enc> {
+    pub fn step<'scratch>(self, data: &[u8], scratch: &'scratch mut Scratch) -> Step<Block<'enc, 'scratch>, (usize, StartSave)> {
         let block_size = data.len() + 1;
         let block_size = if block_size < 1 << 24 {
             block_size as u32
         } else {
-            panic!("usage error"); // XXX
+            panic!("usage error: length of a BZZ block must be less than `(1<<24) - 1`"); // XXX
         };
 
         // important: don't BWT until we know encoding can go forward
-        let mut zp = match self.zp.provision(24 + 2 + 24) {
-            Update::Success(enc) => enc,
-            Update::Suspend((off, zp)) => {
-                return Update::Suspend((off, EncoderSave {
+        // provisioning: 24 decisions for the block size, 2 for the speed
+        let mut zp = match self.zp.provision(24 + 2) {
+            Complete(enc) => enc,
+            Incomplete((off, zp)) => {
+                return Incomplete((off, StartSave {
                     zp,
                     array: self.array,
                     array_inv: self.array_inv,
@@ -146,7 +136,7 @@ impl<'a> Encoder<'a> {
             mtf_index: Some(3),
         };
 
-        Update::Success(EncodeBlock {
+        Complete(Block {
             progress,
             scratch,
             zp,
@@ -160,16 +150,16 @@ impl<'a> Encoder<'a> {
     }
 }
 
-pub struct EncoderSave {
+pub struct StartSave {
     zp: zp::enc::EncoderSave,
     array: Box<[Symbol; 256]>,
     array_inv: Box<[u8; 256]>,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
 }
 
-impl EncoderSave {
-    pub fn resume(self, data: &mut [u8]) -> Encoder<'_> {
-        Encoder {
+impl StartSave {
+    pub fn resume(self, data: &mut [u8]) -> Start<'_> {
+        Start {
             zp: self.zp.resume(data),
             array: self.array,
             array_inv: self.array_inv,
@@ -178,11 +168,11 @@ impl EncoderSave {
     }
 }
 
-pub struct EncodeBlock<'a, 'b> {
+pub struct Block<'enc, 'scratch> {
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
-    zp: zp::Encoder<'a>,
+    zp: zp::Encoder<'enc>,
     progress: BlockProgress,
-    scratch: &'b mut Scratch,
+    scratch: &'scratch mut Scratch,
 }
 
 struct BlockProgress {
@@ -193,14 +183,14 @@ struct BlockProgress {
     mtf_index: Option<u8>,
 }
 
-impl<'a, 'b> EncodeBlock<'a, 'b> {
-    pub fn encode(self) -> Update<Encoder<'a>, (usize, EncodeBlockSave<'b>)> {
+impl<'enc, 'scratch> Block<'enc, 'scratch> {
+    pub fn step(self) -> Step<Start<'enc>, (usize, BlockSave<'scratch>)> {
         let Self { mut contexts, mut zp, mut progress, scratch } = self;
         while progress.i < progress.size {
             zp = match zp.provision(16) {
-                Update::Success(enc) => enc,
-                Update::Suspend((off, zp)) => {
-                    return Update::Suspend((off, EncodeBlockSave {
+                Complete(enc) => enc,
+                Incomplete((off, zp)) => {
+                    return Incomplete((off, BlockSave {
                         contexts,
                         zp,
                         progress,
@@ -239,7 +229,7 @@ impl<'a, 'b> EncodeBlock<'a, 'b> {
             progress.i += 1;
         }
         let (array, array_inv) = progress.mtf.into_inner();
-        Update::Success(Encoder {
+        Complete(Start {
             zp,
             array,
             array_inv,
@@ -248,16 +238,16 @@ impl<'a, 'b> EncodeBlock<'a, 'b> {
     }
 }
 
-pub struct EncodeBlockSave<'b> {
+pub struct BlockSave<'scratch> {
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
     progress: BlockProgress,
     zp: zp::enc::EncoderSave,
-    scratch: &'b mut Scratch,
+    scratch: &'scratch mut Scratch,
 }
 
-impl<'b> EncodeBlockSave<'b> {
-    pub fn resume<'a>(self, data: &'a mut [u8]) -> EncodeBlock<'a, 'b> {
-        EncodeBlock {
+impl<'scratch> BlockSave<'scratch> {
+    pub fn resume<'enc>(self, data: &'enc mut [u8]) -> Block<'enc, 'scratch> {
+        Block {
             contexts: self.contexts,
             progress: self.progress,
             zp: self.zp.resume(data),
@@ -270,7 +260,7 @@ fn estimate_compressed_size(plain: &[u8]) -> usize {
     plain.len() / 5 // XXX
 }
 
-pub fn compress(plain: &[u8], out: &mut Vec<u8>, scratch: &mut Scratch, blocks: Blocks) {
+pub fn compress(plain: &[u8], out: &mut Vec<u8>, scratch: &mut Scratch, split: Split) {
     use core::mem::ManuallyDrop;
 
     fn grow(out: &mut Vec<u8>, off: usize) -> &mut [u8] {
@@ -285,54 +275,51 @@ pub fn compress(plain: &[u8], out: &mut Vec<u8>, scratch: &mut Scratch, blocks: 
     // XXX use of ManuallyDrop is a hack, necessary because the drop check has a blind
     // spot that's exposed by the loop here
     // TODO find a way to write this kind of encoder loops without hacks
-    let mut encoder = ManuallyDrop::new(Encoder::new(&mut out[written..]));
-    for block in blocks.split(plain) {
-        let mut block_encoder = loop {
-            encoder = match ManuallyDrop::into_inner(encoder).block(block, scratch) {
-                Update::Success(blk) => break ManuallyDrop::new(blk),
-                Update::Suspend((off, save)) => {
+    let mut start = ManuallyDrop::new(start(&mut out[written..]));
+    for blk in split.iter(plain) {
+        let mut block = loop {
+            start = match ManuallyDrop::into_inner(start).step(blk, scratch) {
+                Complete(enc) => break ManuallyDrop::new(enc),
+                Incomplete((off, save)) => {
                     written += off;
                     ManuallyDrop::new(save.resume(grow(out, off)))
                 }
             };
         };
-        encoder = loop {
-            block_encoder = match ManuallyDrop::into_inner(block_encoder).encode() {
-                Update::Success(enc) => break ManuallyDrop::new(enc),
-                Update::Suspend((off, save)) => {
+        start = loop {
+            block = match ManuallyDrop::into_inner(block).step() {
+                Complete(enc) => break ManuallyDrop::new(enc),
+                Incomplete((off, save)) => {
                     written += off;
                     ManuallyDrop::new(save.resume(grow(out, off)))
                 }
             };
         };
     }
-    written += ManuallyDrop::into_inner(encoder).flush();
+    written += ManuallyDrop::into_inner(start).flush();
     out.truncate(written);
 }
 
-pub fn compress_oneshot(plain: &[u8], blocks: Blocks) -> Vec<u8> {
+pub fn compress_oneshot(plain: &[u8], split: Split) -> Vec<u8> {
     let mut out = Vec::new();
     let mut scratch = Scratch::new();
-    compress(plain, &mut out, &mut scratch, blocks);
+    compress(plain, &mut out, &mut scratch, split);
     out
 }
 
-/// A strategy for dividing data into blocks for compression.
+/// A strategy for dividing input into blocks for compression.
 #[derive(Default)]
 #[non_exhaustive]
-pub enum Blocks {
+pub enum Split {
     /// The implementation's default strategy.
-    ///
-    /// This is not guaranteed to do anything in particular.
     #[default]
     Default,
-    /// Split the input data into zero or more blocks of fixed size, possibly followed by a shorter final
-    /// block.
+    /// Use blocks of a fixed size, which must be less than `(1 << 24) - 1`.
     Size(usize),
 }
 
-impl Blocks {
-    fn split(self, plain: &[u8]) -> Box<dyn Iterator<Item = &[u8]> + '_> {
+impl Split {
+    fn iter(self, plain: &[u8]) -> Box<dyn Iterator<Item = &[u8]> + '_> {
         match self {
             Self::Default => Box::new(plain.chunks(1000)), // XXX
             Self::Size(z) => Box::new(plain.chunks(z)),

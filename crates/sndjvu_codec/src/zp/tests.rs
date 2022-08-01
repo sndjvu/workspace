@@ -1,7 +1,7 @@
 use proptest::prelude::*;
 
-use super::{Context, enc, Encoder, dec, Decoder};
-use crate::Update;
+use super::{Context, Encoder, Decoder};
+use crate::Step::*;
 
 const NUM_CONTEXTS: usize = 100;
 
@@ -27,8 +27,8 @@ proptest! {
         let mut contexts = [Context::NEW; NUM_CONTEXTS];
         let mut buf = vec![0xff; 8 * records.len()]; // XXX
         let mut encoder = match Encoder::new(&mut buf[..]).provision(records.len() as u32) {
-            Update::Success(enc) => enc,
-            Update::Suspend(_) => panic!(),
+            Complete(enc) => enc,
+            Incomplete(_) => panic!(),
         };
         for &Record { context, decision } in &records {
             match context {
@@ -39,10 +39,10 @@ proptest! {
         let end = encoder.flush();
         contexts = [Context::NEW; NUM_CONTEXTS];
         let mut decoder = match Decoder::new(&buf[..end]).provision(records.len() as u32) {
-            Update::Success(dec) => dec,
-            Update::Suspend(save) => match save.seal().provision(records.len() as u32) {
-                Update::Success(dec) => dec,
-                Update::Suspend(_) => unreachable!(),
+            Complete(dec) => dec,
+            Incomplete(save) => match save.seal().provision(records.len() as u32) {
+                Complete(dec) => dec,
+                Incomplete(_) => unreachable!(),
             }
         };
         for &Record { context, decision } in &records {

@@ -1,4 +1,4 @@
-use super::{Scratch, Blocks};
+use super::{Scratch, Split};
 use proptest::prelude::*;
 use std::{vec, format};
 
@@ -13,8 +13,8 @@ proptest! {
     }
 
     #[test]
-    fn round_trip(input in prop::collection::vec(prop::num::u8::ANY, 1..1_000)) {
-        let compressed = super::compress_oneshot(&input, Blocks::Default);
+    fn round_trip(input in prop::collection::vec(prop::num::u8::ANY, 10..1_000)) {
+        let compressed = super::compress_oneshot(&input, Split::Default);
         let output = super::decompress_oneshot(&compressed).unwrap();
         prop_assert_eq!(output, input);
     }

@@ -1,4 +1,4 @@
-use crate::Update;
+use crate::Step::{self, *};
 use super::{Context, Entry};
 use core::mem::take;
 
@@ -131,16 +131,16 @@ impl<'a> Encoder<'a> {
         }
     }
 
-    pub fn provision(self, num_decisions: u32) -> Update<Self, (usize, EncoderSave)> {
+    pub fn provision(mut self, num_decisions: u32) -> Step<Self, (usize, EncoderSave)> {
         if self.out.can(num_decisions) {
-            Update::Success(self)
+            Complete(self)
         } else {
             let off = self.out.place.off;
             let save = EncoderSave {
                 state: self.state,
                 out: self.out.relay(()),
             };
-            Update::Suspend((off, save))
+            Incomplete((off, save))
         }
     }
 

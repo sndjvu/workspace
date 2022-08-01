@@ -11,13 +11,9 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-/// `Result`-like type used to convey the result of a coding operation.
-pub enum Update<T, U> {
-    /// Indicates that the coding operation succeeded.
-    Success(T),
-    /// Indicates that the coding operation couldn't be completed because the coder ran out of
-    /// input.
-    Suspend(U),
+pub enum Step<L, R> {
+    Complete(L),
+    Incomplete(R),
 }
 
 pub(crate) mod zp;

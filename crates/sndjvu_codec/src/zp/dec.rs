@@ -1,4 +1,4 @@
-use crate::Update;
+use crate::Step::{self, *};
 use super::{Context, Entry};
 use core::ops::{Add, Div, Mul, Sub};
 use core::mem::take;
@@ -204,7 +204,7 @@ impl<'a> Decoder<'a> {
         }
     }
 
-    pub fn provision(mut self, num_decisions: u32) -> Update<Self, DecoderSave> {
+    pub fn provision(mut self, num_decisions: u32) -> Step<Self, DecoderSave> {
         // check whether we've passed the marker
         if let Input::InPlank { ref mut plank, marker, buf } = self.input {
             if let Some(over) = self.pos.checked_sub(marker) {
@@ -219,7 +219,7 @@ impl<'a> Decoder<'a> {
 
         let decisions_avail = 16i32.sub(self.state.level).div(16) as u32;
         let decisions_rem = match num_decisions.checked_sub(decisions_avail) {
-            None | Some(0) => return Update::Success(self),
+            None | Some(0) => return Complete(self),
             Some(n) => n,
         };
         let need = decisions_rem
@@ -230,12 +230,12 @@ impl<'a> Decoder<'a> {
         match self.input {
             Input::InBuf { buf, ref mut saved_plank } => {
                 if buf.get(self.pos..self.pos + need).is_some() {
-                    Update::Success(self)
+                    Complete(self)
                 } else {
                     let mut plank = take(saved_plank);
                     plank.clear();
                     plank.extend_from_slice(&buf[self.pos..]);
-                    Update::Suspend(DecoderSave {
+                    Incomplete(DecoderSave {
                         state: self.state,
                         plank,
                         pos: 0,
@@ -249,11 +249,11 @@ impl<'a> Decoder<'a> {
                 let start = plank.len() - marker;
                 if let Some(slice) = buf.get(start..start + extra) {
                     plank.extend_from_slice(slice);
-                    Update::Success(self)
+                    Complete(self)
                 } else {
                     let mut plank = take(plank);
                     plank.extend_from_slice(&buf[start..]);
-                    Update::Suspend(DecoderSave {
+                    Incomplete(DecoderSave {
                         state: self.state,
                         plank,
                         pos: self.pos,
@@ -265,7 +265,7 @@ impl<'a> Decoder<'a> {
                 let have = plank.len() - self.pos;
                 let extra = need.saturating_sub(have);
                 plank.extend(core::iter::repeat(0xff).take(extra));
-                Update::Success(self)
+                Complete(self)
             }
         }
     }
