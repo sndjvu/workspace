@@ -47,8 +47,8 @@ impl<'a> Annotations<'a> {
                     for _ in 0..2 {
                         *chan = (*chan << 4) + match xs.next() {
                             Some(x @ b'0'..=b'9') => x - b'0',
-                            Some(x @ b'a'..=b'f') => x - b'a' + 16,
-                            Some(x @ b'A'..=b'F') => x - b'A' + 16,
+                            Some(x @ b'a'..=b'f') => x - b'a' + 10,
+                            Some(x @ b'A'..=b'F') => x - b'A' + 10,
                             _ => return Err(error_placeholder()),
                         };
                     }
