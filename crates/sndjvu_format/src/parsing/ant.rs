@@ -25,10 +25,6 @@ fn parse_quoted(raw: &[u8]) -> Quoted {
     todo!()
 }
 
-fn parse_link_dest(raw: Quoted) -> LinkDest {
-    todo!()
-}
-
 impl<'a> Annotations<'a> {
     fn remaining(&self) -> &'a [u8] {
         todo!()
@@ -215,13 +211,11 @@ impl<'a> Annotations<'a> {
                         if self.word()? != b"url" {
                             return Err(error_placeholder());
                         }
-                        let raw_dest = self.quoted()?;
-                        let dest = parse_link_dest(raw_dest);
+                        let dest = self.quoted()?;
                         let target = self.quoted()?;
                         Link { dest, target: Some(target) }
                     }
-                    Token::Quoted(raw_dest) => {
-                        let dest = parse_link_dest(raw_dest);
+                    Token::Quoted(dest) => {
                         Link { dest, target: None }
                     }
                     _ => return Err(error_placeholder()),

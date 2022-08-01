@@ -141,7 +141,7 @@ impl Display for VertAlign {
 /// The first argument to the [`maparea`](Maparea) annotation.
 #[derive(Clone, Debug)]
 pub struct Link {
-    pub dest: LinkDest,
+    pub dest: Quoted,
     pub target: Option<Quoted>,
 }
 
@@ -152,21 +152,6 @@ impl Display for Link {
             write!(f, "(url {dest} {target})")
         } else {
             write!(f, "{dest}")
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum LinkDest {
-    External(Quoted),
-    Internal(Quoted),
-}
-
-impl Display for LinkDest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match *self {
-            Self::External(ref s) => write!(f, "{s}"),
-            Self::Internal(ref _s) => todo!(),
         }
     }
 }
