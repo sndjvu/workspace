@@ -342,7 +342,6 @@ impl<'a> Debug for Txt<'a> {
 
 impl<'a> Txt<'a> {
     fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
-        let content = s.parent;
         let len = s.u24_be()?;
         let text = s.slice(len as usize)?;
         let version = s.byte().map(crate::TxtVersion)?;
@@ -478,7 +477,6 @@ pub struct Iw44<'a> {
 
 impl<'a> Iw44<'a> {
     fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
-        let content = s.parent;
         let byte = s.byte()?;
         let num_slices = s.byte()?;
         let kind = if let Some(serial) = NonZeroU8::new(byte) {
@@ -554,23 +552,9 @@ impl<'a> RawFgbz<'a> {
 }
 
 pub struct Fgbz<'a> {
-    version: crate::FgbzVersion,
-    palette: &'a [PaletteEntry],
-    indices: Option<FgbzIndices<'a>>,
-}
-
-impl<'a> Fgbz<'a> {
-    pub fn version(&self) -> crate::FgbzVersion {
-        self.version
-    }
-
-    pub fn palette(&self) -> &'a [PaletteEntry] {
-        self.palette
-    }
-
-    pub fn indices(&self) -> Option<&FgbzIndices<'a>> {
-        self.indices.as_ref()
-    }
+    pub version: crate::FgbzVersion,
+    pub palette: &'a [PaletteEntry],
+    pub indices: Option<FgbzIndices<'a>>,
 }
 
 pub struct FgbzIndices<'a> {
@@ -708,7 +692,6 @@ impl<'a> RawDirm<'a> {
         };
         let rest = s.rest();
         Ok(Dirm {
-            content: self.content,
             version,
             num_components,
             bundled,
@@ -718,10 +701,9 @@ impl<'a> RawDirm<'a> {
 }
 
 pub struct Dirm<'a> {
-    content: Field<'a>,
-    version: crate::DirmVersion,
-    num_components: u16,
-    bundled: Option<Bundled<'a>>,
+    pub version: crate::DirmVersion,
+    pub num_components: u16,
+    pub bundled: Option<Bundled<'a>>,
     pub extra: DirmExtra<'a>,
 }
 
