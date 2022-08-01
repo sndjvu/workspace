@@ -374,13 +374,16 @@ fn cvt_zone_i16(bytes: [u8; 2]) -> i16 {
 
 impl Zone {
     fn cast_slice(arrays: &[[u8; 17]]) -> Result<&[Self], Error> {
-        for &[x, ..] in arrays {
+        for arr in arrays {
+            let p = arr as *const _ as *const Zone;
+            let x = unsafe { *core::ptr::addr_of!((*p).kind).cast::<u8>() };
             if !(1..=7).contains(&x) {
                 return Err(error_placeholder());
             }
         }
-        // SAFETY Zone has the same layout as [u8; 17], and we've checked that the kind
-        // fields have valid values
+
+        // SAFETY Zone has the same layout as [u8; 17], with no padding,
+        // and we've checked that the kind fields have valid values
         let zones = unsafe {
             core::slice::from_raw_parts(
                 arrays.as_ptr().cast(),
