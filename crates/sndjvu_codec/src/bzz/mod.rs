@@ -142,8 +142,13 @@ impl MtfWithInv {
     }
 
     fn do_rotation(&mut self, index: u8, symbol: Symbol) {
-        let k = self.inner.do_rotation_inner(index, symbol);
-        self.inv[symbol.get() as usize] = k;
+        let stop = self.inner.do_rotation_inner(index, symbol);
+        let mut k = index;
+        while k > stop {
+            self.inv[self.inner.array[k as usize].get() as usize] = k;
+            k -= 1;
+        }
+        self.inv[symbol.get() as usize] = stop;
     }
 
     fn into_inner(self) -> (Box<[Symbol; 256]>, Box<[u8; 256]>) {
