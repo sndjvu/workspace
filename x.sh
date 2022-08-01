@@ -11,6 +11,10 @@ www() {
 		return 1
 	fi
 
+	cargo doc --workspace --no-deps --all-features --target x86_64-unknown-linux-gnu
+	mkdir www/rustdoc
+	cp -r target/x86_64-unknown-linux-gnu/doc/* www/rustdoc
+
 	find . -maxdepth 1 -mindepth 1 '!' '(' -name .git -or -name www ')' -exec rm -r '{}' '+'
 	find www -maxdepth 1 -mindepth 1 -exec mv -t . '{}' '+'
 	rmdir www
