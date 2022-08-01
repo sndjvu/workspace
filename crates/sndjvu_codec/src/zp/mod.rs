@@ -12,7 +12,6 @@ struct Entry {
     λ: u8,
 }
 
-#[rustfmt::skip]
 static TABLE: [Entry; 251] = [
     Entry { Δ: 0x8000, θ: 0x0000, μ:  84, λ: 145 },
     Entry { Δ: 0x8000, θ: 0x0000, μ:   3, λ:   4 },
