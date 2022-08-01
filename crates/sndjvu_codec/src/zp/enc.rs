@@ -76,11 +76,16 @@ impl<'a> Out<Place<'a>> {
     }
 
     fn can(&self, num_decisions: u32) -> bool {
-        // FIXME need to account for the current run counter, right?
-        let mut bits = 16 * num_decisions;
-        bits += 24 + 1;
+        // bits that we've already committed to
+        let mut bits = self.run_counter;
+        // at most 16 bits per decision
+        bits += 16 * num_decisions;
+        // at most 26 bits for flush (empirical)
+        bits += 24 + 2;
+        // the first N bits will be used to fill a partial byte that's accounted separately
         bits -= self.dispense_countdown;
-        let bytes = (bits + 7) / 8;
+        // round up, plus the partial byte previously mentioned
+        let bytes = 1 + (bits + 7) / 8;
         bytes as usize <= self.place.inner.as_slice().len()
     }
 
