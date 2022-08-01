@@ -342,6 +342,8 @@ pub enum Split {
     Default,
     /// Use blocks of a fixed size, which must be less than `(1 << 24) - 1`.
     Size(usize),
+    /// Use blocks of the largest possible size.
+    Maximal,
 }
 
 impl Split {
@@ -349,6 +351,7 @@ impl Split {
         match self {
             Self::Default => Box::new(plain.chunks(1000)), // XXX
             Self::Size(z) => Box::new(plain.chunks(z)),
+            Self::Maximal => Box::new(plain.chunks((1 << 24) - 2)),
         }
     }
 }
