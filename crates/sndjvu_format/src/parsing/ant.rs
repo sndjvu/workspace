@@ -3,7 +3,7 @@ use crate::annot::*;
 use alloc::vec::Vec;
 
 #[derive(Clone)]
-pub struct Annotations<'a> {
+pub struct ParsingAnnots<'a> {
     full: StringField<'a>,
     pos: usize,
 }
@@ -17,17 +17,17 @@ enum Token<'a> {
     Number(u32),
 }
 
-fn split_for_token(raw: &[u8]) -> (usize, Option<u8>, &[u8]) {
+fn split_for_token(_raw: &[u8]) -> (usize, Option<u8>, &[u8]) {
     todo!()
 }
 
-fn parse_quoted(raw: &[u8]) -> Quoted {
+fn parse_key(_: &[u8]) -> Key {
     todo!()
 }
 
-impl<'a> Annotations<'a> {
+impl<'a> ParsingAnnots<'a> {
     fn remaining(&self) -> &'a [u8] {
-        todo!()
+        &self.full.0.bytes()[self.pos..]
     }
 
     pub(super) fn new(full: StringField<'a>) -> Self {
@@ -174,7 +174,7 @@ impl<'a> Annotations<'a> {
                     b"one2one" => Zoom::One2One,
                     b"width" => Zoom::Width,
                     b"page" => Zoom::Page,
-                    &[b'd', ref rest @ ..] => todo!(),
+                    &[b'd', ref _rest @ ..] => todo!(),
                     _ => return Err(error_placeholder()),
                 };
                 Annot::Zoom(val)
@@ -383,7 +383,7 @@ impl<'a> Annotations<'a> {
                 while let Some(key) = self.maybe_open()? {
                     let val = self.quoted()?;
                     self.close()?;
-                    todo!() // push the pair
+                    pairs.push((parse_key(key), val));
                 }
                 Annot::Metadata(pairs)
             }

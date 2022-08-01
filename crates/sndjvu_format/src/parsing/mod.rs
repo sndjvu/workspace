@@ -1,29 +1,23 @@
 //! Low-level parser for the DjVu transfer format.
 //!
-//! Entry points to this module are [`document`] and [`indirect_component`].
+//! ## Rundown
 //!
-//! ## Parsing strategy
+//! ### Entry points
 //!
-//! The goal is to provide everything needed parse a DjVu document
-//! while allowing the caller maximum flexibility in memory management
-//! and I/O handling.
+//! - [`document`]
+//! - [`indirect_component`]
 //!
-//! - Callers don't need to load an entire document or even an entire
-//!   component into memory at once. Generally, only a single chunk
-//!   needs to be loaded to make progress. This is important for
-//!   situations where a document is being received piecemeal over
-//!   the wire, and you want to start parsing it as soon as possible,
-//!   and also desirable whenever you're trying to control memory usage.
-//! - Parsing functions accept `&[u8]`, the lowest common denominator
-//!   for in-memory binary data.
-//! - There are no references to `std::fs`, `std::net`, `std::io`, etc.
-//!   In fact, the whole library is `no_std` by default.
-//! - BZZ decoding is up to the caller. Once decoded, you can pass the
-//!   raw data to the appropriate function as a `&[u8]`. The sndjvu_codec
-//!   library provides everything you need, or you can plug in a different
-//!   decoder.
+//! ### Pointer types
 //!
-//! ## Pointers
+//! - [`ComponentP`]
+//! - [`ElementP`]
+//! - [`ThumbnailP`]
+//!
+//! ### Raw chunks
+//!
+//! ### Parsed chunks
+//!
+//! ## More on "pointers"
 //!
 //! Here's an illustration of how to think about [`ComponentP`] and [`ElementP`]
 //! ([`ThumbnailP`] is completely analogous):
@@ -38,14 +32,15 @@
 //!                    ComponentP                                       ComponentP
 //! ```
 //!
-//! Of note, all these types can validly be "one-past-the-end". This extends the analogy with
-//! pointers and is necessary anyway to support documents with no components and components with no
-//! elements or thumbnails. Trying to `feed` a one-past-the-end value will always return
-//! [`Progress::End`].
+//! Of note, all these types can validly be "one-past-the-end". This extends the
+//! analogy with pointers and is necessary anyway to support documents with no
+//! components and components with no elements or thumbnails. Trying to `feed`
+//! a one-past-the-end value will always return [`Progress::End`].
 
 use crate::Bstr;
 use core::fmt::{Debug, Formatter};
 use core::num::NonZeroU8;
+use alloc::vec::Vec;
 #[cfg(sndjvu_backtrace)]
 use std::backtrace::Backtrace;
 
@@ -109,9 +104,9 @@ pub struct Error {
 }
 
 impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         #[cfg(sndjvu_backtrace)]
-        { write!(f, "{}", self.backtrace)?; }
+        { write!(_f, "{}", self.backtrace)?; }
         Ok(())
     }
 }
@@ -270,8 +265,8 @@ pub struct RawAnta<'a> {
 }
 
 impl<'a> RawAnta<'a> {
-    pub fn parsing(&self) -> Annotations<'a> {
-        Annotations::new(self.content)
+    pub fn parsing(&self) -> ParsingAnnots<'a> {
+        ParsingAnnots::new(self.content)
     }
 }
 
@@ -286,18 +281,18 @@ impl<'a> RawAntz<'a> {
         self.content.bytes()
     }
 
-    pub fn decoded<'dec>(&self, decoded: &'dec [u8]) -> Ant<'dec> {
-        Ant { content: StringField(self.content.decoded(decoded)) }
+    pub fn decoded<'dec>(&self, decoded: &'dec [u8]) -> DecodedAntz<'dec> {
+        DecodedAntz { content: StringField(self.content.decoded(decoded)) }
     }
 }
 
-pub struct Ant<'a> {
+pub struct DecodedAntz<'a> {
     content: StringField<'a>,
 }
 
-impl<'a> Ant<'a> {
-    pub fn parsing(&self) -> Annotations<'a> {
-        Annotations::new(self.content)
+impl<'a> DecodedAntz<'a> {
+    pub fn parsing(&self) -> ParsingAnnots<'a> {
+        ParsingAnnots::new(self.content)
     }
 }
 
@@ -711,13 +706,13 @@ impl<'a> RawDirm<'a> {
         } else {
             None
         };
-        let bzz = s.rest();
+        let rest = s.rest();
         Ok(Dirm {
             content: self.content,
             version,
             num_components,
             bundled,
-            bzz,
+            extra: DirmExtra { num_components, content: rest },
         })
     }
 }
@@ -727,8 +722,7 @@ pub struct Dirm<'a> {
     version: crate::DirmVersion,
     num_components: u16,
     bundled: Option<Bundled<'a>>,
-    // FIXME maybe this should have its own struct, like FgbzIndices?
-    bzz: Field<'a>,
+    pub extra: DirmExtra<'a>,
 }
 
 impl<'a> Dirm<'a> {
@@ -743,13 +737,20 @@ impl<'a> Dirm<'a> {
     pub fn bundled(&self) -> Option<&Bundled<'a>> {
         self.bundled.as_ref()
     }
+}
 
-    pub fn bzz_extra(&self) -> &'a [u8] {
-        self.bzz.bytes()
+pub struct DirmExtra<'a> {
+    num_components: u16,
+    content: Field<'a>,
+}
+
+impl<'a> DirmExtra<'a> {
+    pub fn bzz(&self) -> &'a [u8] {
+        self.content.bytes()
     }
 
-    pub fn parse_decoded_extra<'dec>(&self, decoded: &'dec [u8]) -> Result<alloc::vec::Vec<ComponentMeta<'dec>>, Error> {
-        let mut s = self.bzz.decoded(decoded).split();
+    pub fn parse_decoded<'dec>(&self, decoded: &'dec [u8]) -> Result<Vec<ComponentMeta<'dec>>, Error> {
+        let mut s = self.content.decoded(decoded).split();
         let init_meta = ComponentMeta {
             len: 0,
             kind: crate::ComponentKind::Djvi,
@@ -909,17 +910,17 @@ impl<'a> DecodedNavm<'a> {
         self.num_bookmarks
     }
 
-    pub fn parsing(&self) -> ParsingNavm<'a> {
-        ParsingNavm { remaining: self.num_bookmarks, s: self.body.split() }
+    pub fn parsing(&self) -> ParsingBookmarks<'a> {
+        ParsingBookmarks { remaining: self.num_bookmarks, s: self.body.split() }
     }
 }
 
-pub struct ParsingNavm<'a> {
+pub struct ParsingBookmarks<'a> {
     remaining: u16,
     s: SplitInner<'a>,
 }
 
-impl<'a> ParsingNavm<'a> {
+impl<'a> ParsingBookmarks<'a> {
     pub fn parse_next(&mut self) -> Result<Option<Bookmark<'a>>, Error> {
         if self.remaining == 0 {
             return Ok(None);
@@ -1396,4 +1397,4 @@ impl<'a> SplitInner<'a> {
 }
 
 mod ant;
-pub use ant::Annotations;
+pub use ant::ParsingAnnots;
