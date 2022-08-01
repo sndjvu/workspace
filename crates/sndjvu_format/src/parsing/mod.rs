@@ -612,6 +612,10 @@ impl PaletteIndex {
             )
         }
     }
+
+    pub fn get(self) -> u16 {
+        u16::from_be_bytes(self.0)
+    }
 }
 
 pub struct RawIncl<'a> {
@@ -654,6 +658,88 @@ pub struct RawSmmr<'a> {
     content: Field<'a>,
     after_pos: Pos,
     end_pos: Pos,
+}
+
+impl<'a> RawSmmr<'a> {
+    pub fn parse(&self) -> Result<Smmr<'a>, Error> {
+        let mut s = self.content.split();
+        let magic = s.array()?;
+        if magic != b"MMR" {
+            return Err(error_placeholder());
+        }
+        let flags = s.byte()?;
+        let is_reverse_video = flags & 0b1 != 0;
+        let is_striped = flags & 0b10 != 0;
+        let width = s.u16_be()?;
+        let height = s.u16_be()?;
+        let rest = s.rest();
+        let body = if is_striped {
+            let mut s = rest.split();
+            let rows_per_stripe = s.u16_be()?;
+            let rest = s.rest();
+            SmmrBody::Striped(MmrStripes { rows_per_stripe, rest })
+        } else {
+            SmmrBody::Bulk(Mmr { data: rest })
+        };
+        Ok(Smmr {
+            is_reverse_video,
+            width,
+            height,
+            body,
+        })
+    }
+}
+
+pub struct Smmr<'a> {
+    pub is_reverse_video: bool,
+    pub width: u16,
+    pub height: u16,
+    pub body: SmmrBody<'a>,
+}
+
+pub enum SmmrBody<'a> {
+    Bulk(Mmr<'a>),
+    Striped(MmrStripes<'a>),
+}
+
+pub struct Mmr<'a> {
+    data: Field<'a>,
+}
+
+impl<'a> Mmr<'a> {
+    pub fn bytes(&self) -> &'a [u8] {
+        self.data.bytes()
+    }
+}
+
+pub struct MmrStripes<'a> {
+    rows_per_stripe: u16,
+    rest: Field<'a>,
+}
+
+impl<'a> MmrStripes<'a> {
+    pub fn rows_per_stripe(&self) -> u16 {
+        self.rows_per_stripe
+    }
+
+    pub fn parsing(&self) -> ParsingStripes<'a> {
+        ParsingStripes { s: self.rest.split() }
+    }
+}
+
+pub struct ParsingStripes<'a> {
+    s: SplitInner<'a>,
+}
+
+impl<'a> ParsingStripes<'a> {
+    pub fn parse_next(&mut self) -> Result<Option<Mmr<'a>>, Error> {
+        if self.s.remaining().is_empty() {
+            return Ok(None);
+        }
+        let len = self.s.u32_be()?;
+        let data = self.s.field(len as usize)?;
+        Ok(Some(Mmr { data }))
+    }
 }
 
 pub struct Chunk<'a> {
@@ -1322,6 +1408,10 @@ impl<'a> SplitInner<'a> {
         }
     }
 
+    fn field(&mut self, _n: usize) -> Result<Field<'a>, Error> {
+        todo!()
+    }
+
     fn slice(&mut self, n: usize) -> Result<&'a [u8], Error> {
         if let Some(slice) = self.remaining().get(..n) {
             self.by += n as u32; // XXX
@@ -1359,6 +1449,11 @@ impl<'a> SplitInner<'a> {
     fn u24_be(&mut self) -> Result<u32, Error> {
         let &[x, y, z] = self.array()?;
         Ok(u32::from_be_bytes([0, x, y, z]))
+    }
+
+    fn u32_be(&mut self) -> Result<u32, Error> {
+        let &xs = self.array()?;
+        Ok(u32::from_be_bytes(xs))
     }
 
     fn rest(self) -> Field<'a> {
