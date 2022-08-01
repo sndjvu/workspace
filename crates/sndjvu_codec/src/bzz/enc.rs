@@ -280,25 +280,34 @@ pub fn compress(plain: &[u8], out: &mut Vec<u8>, scratch: &mut Scratch, blocks: 
         &mut out[off..]
     }
 
-    let orig_len = out.len();
-    out.resize(orig_len + estimate_compressed_size(plain), 0x00);
-    let mut encoder = ManuallyDrop::new(Encoder::new(&mut out[orig_len..]));
+    let mut written = out.len();
+    out.resize(written + 52 + estimate_compressed_size(plain), 0x00);
+    // XXX use of ManuallyDrop is a hack, necessary because the drop check has a blind
+    // spot that's exposed by the loop here
+    // TODO find a way to write this kind of encoder loops without hacks
+    let mut encoder = ManuallyDrop::new(Encoder::new(&mut out[written..]));
     for block in blocks.split(plain) {
         let mut block_encoder = loop {
             encoder = match ManuallyDrop::into_inner(encoder).block(block, scratch) {
                 Update::Success(blk) => break ManuallyDrop::new(blk),
-                Update::Suspend((off, save)) => ManuallyDrop::new(save.resume(grow(out, off))),
+                Update::Suspend((off, save)) => {
+                    written += off;
+                    ManuallyDrop::new(save.resume(grow(out, off)))
+                }
             };
         };
         encoder = loop {
             block_encoder = match ManuallyDrop::into_inner(block_encoder).encode() {
                 Update::Success(enc) => break ManuallyDrop::new(enc),
-                Update::Suspend((off, save)) => ManuallyDrop::new(save.resume(grow(out, off))),
+                Update::Suspend((off, save)) => {
+                    written += off;
+                    ManuallyDrop::new(save.resume(grow(out, off)))
+                }
             };
         };
     }
-    let off = ManuallyDrop::into_inner(encoder).flush();
-    out.truncate(orig_len + off);
+    written += ManuallyDrop::into_inner(encoder).flush();
+    out.truncate(written);
 }
 
 pub fn compress_oneshot(plain: &[u8], blocks: Blocks) -> Vec<u8> {
