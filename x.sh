@@ -10,7 +10,7 @@ www() {
 		echo "fatal: not running on GitHub Actions"
 		return 1
 	fi
-	
+
 	find . -maxdepth 1 -mindepth 1 '!' '(' -name .git -or -name www ')' -exec rm -r '{}' '+'
 	find www -maxdepth 1 -mindepth 1 -exec mv -t . '{}' '+'
 	rmdir www
