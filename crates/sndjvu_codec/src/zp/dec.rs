@@ -145,6 +145,14 @@ impl DecoderSave {
             #[cfg(debug_assertions)] remaining: 0,
         }
     }
+
+    #[allow(unused)]
+    pub fn seal_provision<'a>(self, num_decisions: u32) -> Decoder<'a> {
+        match self.seal().provision(num_decisions) {
+            Complete(dec) => dec,
+            Incomplete(_) => unreachable!(),
+        }
+    }
 }
 
 enum Input<'a> {

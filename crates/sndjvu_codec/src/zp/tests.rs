@@ -40,10 +40,7 @@ proptest! {
         contexts = [Context::NEW; NUM_CONTEXTS];
         let mut decoder = match Decoder::new(&buf[..end]).provision(records.len() as u32) {
             Complete(dec) => dec,
-            Incomplete(save) => match save.seal().provision(records.len() as u32) {
-                Complete(dec) => dec,
-                Incomplete(_) => unreachable!(),
-            }
+            Incomplete(save) => save.seal_provision(records.len() as u32),
         };
         for &Record { context, decision } in &records {
             match context {
