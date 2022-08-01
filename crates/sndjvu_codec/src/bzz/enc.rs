@@ -75,6 +75,11 @@ fn encode_u8(
 }
 
 pub fn start(buf: &mut [u8]) -> Start<'_> {
+    // check that we have enough bytes in case the caller flushes immediately
+    let zp = match zp::Encoder::new(buf).provision(24) {
+        Complete(enc) => enc,
+        Incomplete(_) => panic!(), // XXX
+    };
     Start {
         zp,
         array: Box::new(super::MTF_IDENTITY),
@@ -145,6 +150,7 @@ impl<'enc> Start<'enc> {
     }
 
     pub fn flush(mut self) -> usize {
+        // these decisions have already been provisioned, so flushing can be infallible
         encode_u24(&mut self.zp, 0);
         self.zp.flush()
     }
@@ -228,6 +234,22 @@ impl<'enc, 'scratch> Block<'enc, 'scratch> {
             }
             progress.i += 1;
         }
+
+        // the caller may decide to flush after this block,
+        // and we want `flush` to be infallible, so we provision
+        // the required decisions eagerly
+        zp = match zp.provision(24) {
+            Complete(enc) => enc,
+            Incomplete((off, zp)) => {
+                return Incomplete((off, BlockSave {
+                    contexts,
+                    zp,
+                    progress,
+                    scratch,
+                }));
+            }
+        };
+
         let (array, array_inv) = progress.mtf.into_inner();
         Complete(Start {
             zp,
