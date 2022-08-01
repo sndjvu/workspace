@@ -120,18 +120,22 @@ impl<'enc> Start<'enc> {
 
         let marker = bwt(data, scratch);
         encode_u24(&mut zp, block_size);
-        let speed = Speed::Zero; // XXX
-        match speed {
-            Speed::Zero => zp.encode_passthrough(false),
-            Speed::One => {
+        let speed = match block_size {
+            0..=99_999 => {
+                zp.encode_passthrough(false);
+                Speed::Zero
+            }
+            100_000..=999_999 => {
                 zp.encode_passthrough(true);
                 zp.encode_passthrough(false);
+                Speed::One
             }
-            Speed::Two => {
+            1_000_000.. => {
                 zp.encode_passthrough(true);
                 zp.encode_passthrough(true);
+                Speed::Two
             }
-        }
+        };
         let mtf = MtfWithInv::new(speed, self.array, self.array_inv);
         let progress = BlockProgress {
             size: block_size,
