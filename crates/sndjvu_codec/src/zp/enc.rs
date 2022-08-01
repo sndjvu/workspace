@@ -100,6 +100,7 @@ impl<'a> Out<Place<'a>> {
 pub struct Encoder<'a> {
     state: State,
     out: Out<Place<'a>>,
+    #[cfg(debug_assertions)] remaining: u32,
 }
 
 pub struct EncoderSave {
@@ -112,6 +113,7 @@ impl EncoderSave {
         Encoder {
             state: self.state,
             out: self.out.relay(Place { inner: buf.iter_mut(), off: 0 }),
+            #[cfg(debug_assertions)] remaining: 0,
         }
     }
 }
@@ -132,12 +134,16 @@ impl<'a> Encoder<'a> {
                 dispense_countdown: 8,
 
                 place: Place { inner: data.iter_mut(), off: 0 },
-            }
+            },
+            #[cfg(debug_assertions)] remaining: 0,
         }
     }
 
     pub fn provision(mut self, num_decisions: u32) -> Step<Self, (usize, EncoderSave)> {
         if self.out.can(num_decisions) {
+            #[cfg(debug_assertions)] {
+                self.remaining = num_decisions;
+            }
             Complete(self)
         } else {
             let off = self.out.place.off;
@@ -150,6 +156,10 @@ impl<'a> Encoder<'a> {
     }
 
     pub fn encode(&mut self, decision: bool, context: &mut Context) {
+        #[cfg(debug_assertions)] {
+            self.remaining = self.remaining.checked_sub(1).expect("TODO");
+        }
+
         let Entry { Δ, θ, μ, λ } = context.entry();
         let mps = context.mps();
 
@@ -187,6 +197,10 @@ impl<'a> Encoder<'a> {
     }
 
     pub fn encode_passthrough(&mut self, decision: bool) {
+        #[cfg(debug_assertions)] {
+            self.remaining = self.remaining.checked_sub(1).expect("TODO");
+        }
+
         let State { mut a, mut u } = self.state;
         let z = HALF + a / 2;
         if decision {
