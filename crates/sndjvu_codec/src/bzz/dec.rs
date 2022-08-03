@@ -2,7 +2,7 @@
 
 use crate::Step::{self, *};
 use crate::zp;
-use super::{Speed, Symbol, Mtf, Scratch, NUM_CONTEXTS};
+use super::{Appending, Source, Sink, Speed, Symbol, Mtf, Scratch, NUM_CONTEXTS};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::{Display, Formatter};
@@ -34,6 +34,12 @@ impl Display for Error {
             ErrorKind::ExtraMarker { first, second } => write!(f, "marker position for block was encoded more than once ({first}, then {second})")?,
         }
         Ok(())
+    }
+}
+
+impl From<core::convert::Infallible> for Error {
+    fn from(x: core::convert::Infallible) -> Self {
+        match x {}
     }
 }
 
@@ -302,45 +308,59 @@ impl<'dec, 'scratch> Block<'dec, 'scratch> {
     }
 }
 
-/// Decompress BZZ data from a byte slice into existing output and scratch buffers.
-pub fn decompress(
-    bzz: &[u8],
-    buf: &mut Vec<u8>,
-    scratch: &mut Scratch,
-) -> Result<(), Error> {
-    let mut start = start(bzz);
+pub fn decompress<I, O, E>(mut source: I, mut sink: O, scratch: &mut Scratch) -> Result<(), E>
+where
+    I: Source,
+    // XXX error stuff
+    O: Sink<Error = I::Error>,
+    E: From<I::Error> + From<Error>,
+{
+    use core::mem::ManuallyDrop;
+
+    let mut start = match source.get() {
+        None => panic!("empty input is not valid BZZ"),
+        Some(xs) => ManuallyDrop::new(start(xs)),
+    };
+    let mut last_size = 0;
     loop {
-        match start.step(scratch) {
-            Complete(None) => break,
-            Complete(Some(mut block)) => {
-                loop {
-                    match block.step()? {
-                        Complete((shuf, rest)) => {
-                            let len = shuf.len();
-                            let mark = buf.len();
-                            buf.resize(mark + len, 0);
-                            shuf.run(&mut buf[mark..]);
-                            start = rest;
-                            break;
-                        }
-                        Incomplete(save) => block = save.seal(),
+        let mut block = loop {
+            start = match ManuallyDrop::into_inner(start).step(scratch) {
+                Complete(None) => {
+                    sink.advance(last_size, Some(0))?; // XXX
+                    return Ok(());
+                }
+                Complete(Some(enc)) => break ManuallyDrop::new(enc),
+                Incomplete(save) => {
+                    source.advance()?;
+                    match source.get() {
+                        None => ManuallyDrop::new(save.seal()),
+                        Some(xs) => ManuallyDrop::new(save.resume(xs)),
                     }
                 }
-            }
-            Incomplete(save) => start = save.seal(),
-        }
+            };
+        };
+        let (shuffle, next) = loop {
+            block = match ManuallyDrop::into_inner(block).step()? {
+                Complete((shuf, enc)) => break (shuf, ManuallyDrop::new(enc)),
+                Incomplete(save) => {
+                    source.advance()?;
+                    match source.get() {
+                        None => ManuallyDrop::new(save.seal()),
+                        Some(xs) => ManuallyDrop::new(save.resume(xs)),
+                    }
+                }
+            };
+        };
+        sink.advance(last_size, Some(shuffle.len()))?;
+        last_size = shuffle.len();
+        shuffle.run(sink.get());
+        start = next;
     }
-    Ok(())
 }
 
-/// Conveniently decompress BZZ data from a byte slice to a new `Vec<u8>`.
-///
-/// This is more convenient than [`decompress`], but does not support reusing
-/// the output buffer or scratch space.
 pub fn decompress_oneshot(bzz: &[u8]) -> Result<Vec<u8>, Error> {
-    let mut buf = Vec::new();
     let mut scratch = Scratch::new();
-    decompress(bzz, &mut buf, &mut scratch)?;
-    Ok(buf)
+    let mut out = Appending::new();
+    decompress::<_, _, Error>(bzz, &mut out, &mut scratch)?;
+    Ok(out.into_inner())
 }
-

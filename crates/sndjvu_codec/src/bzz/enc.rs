@@ -2,7 +2,7 @@
 
 use crate::Step::{self, *};
 use crate::zp;
-use super::{Scratch, Speed, MtfWithInv, Symbol, NUM_CONTEXTS};
+use super::{Appending, Source, Sink, Scratch, Speed, MtfWithInv, Symbol, NUM_CONTEXTS};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
@@ -282,33 +282,25 @@ impl<'scratch> BlockSave<'scratch> {
     }
 }
 
-fn estimate_compressed_size(plain: &[u8]) -> usize {
-    plain.len() / 5 // XXX
-}
-
-pub fn compress(plain: &[u8], out: &mut Vec<u8>, scratch: &mut Scratch, split: Split) {
+pub fn compress<I, O>(mut source: I, mut sink: O, scratch: &mut Scratch) -> Result<(), I::Error>
+where
+    I: Source,
+    O: Sink<Error = I::Error>,
+{
     use core::mem::ManuallyDrop;
 
-    fn grow(out: &mut Vec<u8>, off: usize) -> &mut [u8] {
-        // XXX proper growth strategy
-        let prev_len = out.len();
-        out.resize(prev_len + 1000, 0x00);
-        &mut out[off..]
-    }
-
-    let mut written = out.len();
-    out.resize(written + 52 + estimate_compressed_size(plain), 0x00);
-    // XXX use of ManuallyDrop is a hack, necessary because the drop check has a blind
-    // spot that's exposed by the loop here
-    // TODO find a way to write this kind of encoder loops without hacks
-    let mut start = ManuallyDrop::new(start(&mut out[written..]));
-    for blk in split.iter(plain) {
+    let mut start = ManuallyDrop::new(start(sink.get()));
+    loop {
+        let data = match source.get() {
+            None => break,
+            Some(xs) => xs,
+        };
         let mut block = loop {
-            start = match ManuallyDrop::into_inner(start).step(blk, scratch) {
+            start = match ManuallyDrop::into_inner(start).step(data, scratch) {
                 Complete(enc) => break ManuallyDrop::new(enc),
                 Incomplete((off, save)) => {
-                    written += off;
-                    ManuallyDrop::new(save.resume(grow(out, off)))
+                    sink.advance(off, None)?;
+                    ManuallyDrop::new(save.resume(sink.get()))
                 }
             };
         };
@@ -316,42 +308,21 @@ pub fn compress(plain: &[u8], out: &mut Vec<u8>, scratch: &mut Scratch, split: S
             block = match ManuallyDrop::into_inner(block).step() {
                 Complete(enc) => break ManuallyDrop::new(enc),
                 Incomplete((off, save)) => {
-                    written += off;
-                    ManuallyDrop::new(save.resume(grow(out, off)))
+                    sink.advance(off, None)?;
+                    ManuallyDrop::new(save.resume(sink.get()))
                 }
             };
         };
+        source.advance()?;
     }
-    written += ManuallyDrop::into_inner(start).flush();
-    out.truncate(written);
+    let off = ManuallyDrop::into_inner(start).flush();
+    sink.advance(off, Some(0))?;
+    Ok(())
 }
 
-pub fn compress_oneshot(plain: &[u8], split: Split) -> Vec<u8> {
-    let mut out = Vec::new();
+pub fn compress_oneshot(plain: &[u8]) -> Vec<u8> {
+    let mut out = Appending::new();
     let mut scratch = Scratch::new();
-    compress(plain, &mut out, &mut scratch, split);
-    out
-}
-
-/// A strategy for dividing input into blocks for compression.
-#[derive(Default)]
-#[non_exhaustive]
-pub enum Split {
-    /// The implementation's default strategy.
-    #[default]
-    Default,
-    /// Use blocks of a fixed size, which must be less than `(1 << 24) - 1`.
-    Size(usize),
-    /// Use blocks of the largest possible size.
-    Maximal,
-}
-
-impl Split {
-    fn iter(self, plain: &[u8]) -> Box<dyn Iterator<Item = &[u8]> + '_> {
-        match self {
-            Self::Default => Box::new(plain.chunks(1000)), // XXX
-            Self::Size(z) => Box::new(plain.chunks(z)),
-            Self::Maximal => Box::new(plain.chunks((1 << 24) - 2)),
-        }
-    }
+    let _ = compress(plain, &mut out, &mut scratch);
+    out.into_inner()
 }
