@@ -3,7 +3,7 @@ use proptest::prelude::*;
 use super::{Context, Encoder, Decoder};
 use crate::Step::*;
 
-const NUM_CONTEXTS: usize = 100;
+const NUM_CONTEXTS: usize = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Record {
