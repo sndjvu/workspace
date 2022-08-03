@@ -6,11 +6,6 @@ git config user.name "Cole Miller"
 git config user.email "m@cole-miller.net"
 
 www() {
-	if test "$GITHUB_ACTIONS" != "true"; then
-		echo "fatal: not running on GitHub Actions"
-		return 1
-	fi
-
 	cargo doc --workspace --no-deps --all-features --target x86_64-unknown-linux-gnu
 	mkdir www/rustdoc
 	cp -r target/x86_64-unknown-linux-gnu/doc/* www/rustdoc
@@ -26,6 +21,17 @@ www() {
 
 	git branch gh-pages
 	git push -f origin gh-pages
+}
+
+ci() {
+	if test "$GITHUB_ACTIONS" != "true"; then
+		echo "fatal: not running on GitHub Actions"
+		return 1
+	fi
+
+	cargo test --workspace --all-features
+
+	www
 }
 
 "$@"

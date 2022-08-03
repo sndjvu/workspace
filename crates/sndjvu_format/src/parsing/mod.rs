@@ -68,15 +68,6 @@ pub enum Progress<T, D = Void> {
 }
 
 /// Uninhabited type, used to punch a hole in [`Progress`].
-///
-/// This will become an alias for the never type [`!`] once that's stabilized. In the meantime,
-/// `Void` does not enjoy the same special coercions as `!`, but you can mimic them like this:
-///
-/// ```
-/// fn explode<T>(x: Void) -> T {
-///     match x {}
-/// }
-/// ```
 pub enum Void {}
 
 fn advanced<T, D>(head: T, s: &SplitOuter<'_>) -> Progress<T, D> {

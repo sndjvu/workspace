@@ -12,8 +12,11 @@ enum Token<'a> {
     Open,
     Close,
     Color(Color),
+    #[allow(unused)]
     Quoted(Quoted),
+    #[allow(unused)]
     Word(&'a [u8]),
+    #[allow(unused)]
     Number(u32),
 }
 
