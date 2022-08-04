@@ -6,7 +6,7 @@ git config user.name "Cole Miller"
 git config user.email "m@cole-miller.net"
 
 www() {
-	cargo doc --workspace --no-deps --all-features --target x86_64-unknown-linux-gnu
+	cargo doc --workspace --all-features --no-deps --target x86_64-unknown-linux-gnu
 	mkdir www/rustdoc
 	cp -r target/x86_64-unknown-linux-gnu/doc/* www/rustdoc
 
@@ -29,7 +29,8 @@ ci() {
 		return 1
 	fi
 
-	cargo test --workspace --all-features
+	cargo test --workspace --all-features --no-run --profile ci
+	cargo test --workspace --all-features --profile ci
 
 	www
 }
