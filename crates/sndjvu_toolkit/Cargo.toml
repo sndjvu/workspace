@@ -1,0 +1,9 @@
+[package]
+name = "sndjvu_toolkit"
+version = "0.0.0"
+
+edition = "2021"
+
+[dependencies]
+sndjvu = { version = "0.0.0", path = "../sndjvu", features = ["std"] }
+lexopt = "0.2.1"
