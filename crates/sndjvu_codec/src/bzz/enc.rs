@@ -2,9 +2,8 @@
 
 use crate::Step::{self, *};
 use crate::zp;
-use super::{Appending, Source, Sink, Scratch, Speed, MtfWithInv, Symbol, NUM_CONTEXTS};
+use super::{Scratch, Speed, MtfWithInv, Symbol, NUM_CONTEXTS};
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 use core::cmp::Ordering;
 
 pub(super) fn bwt(input: &[u8], scratch: &mut Scratch) -> u32 {
@@ -280,49 +279,4 @@ impl<'scratch> BlockSave<'scratch> {
             scratch: self.scratch,
         }
     }
-}
-
-pub fn compress<I, O>(mut source: I, mut sink: O, scratch: &mut Scratch) -> Result<(), I::Error>
-where
-    I: Source,
-    O: Sink<Error = I::Error>,
-{
-    use core::mem::ManuallyDrop;
-
-    let mut start = ManuallyDrop::new(start(sink.get()));
-    loop {
-        let data = match source.get() {
-            None => break,
-            Some(xs) => xs,
-        };
-        let mut block = loop {
-            start = match ManuallyDrop::into_inner(start).step(data, scratch) {
-                Complete(enc) => break ManuallyDrop::new(enc),
-                Incomplete((off, save)) => {
-                    sink.advance(off, None)?;
-                    ManuallyDrop::new(save.resume(sink.get()))
-                }
-            };
-        };
-        start = loop {
-            block = match ManuallyDrop::into_inner(block).step() {
-                Complete(enc) => break ManuallyDrop::new(enc),
-                Incomplete((off, save)) => {
-                    sink.advance(off, None)?;
-                    ManuallyDrop::new(save.resume(sink.get()))
-                }
-            };
-        };
-        source.advance()?;
-    }
-    let off = ManuallyDrop::into_inner(start).flush();
-    sink.advance(off, Some(0))?;
-    Ok(())
-}
-
-pub fn compress_oneshot(plain: &[u8]) -> Vec<u8> {
-    let mut out = Appending::new();
-    let mut scratch = Scratch::new();
-    let _ = compress(plain, &mut out, &mut scratch);
-    out.into_inner()
 }

@@ -2,9 +2,8 @@
 
 use crate::Step::{self, *};
 use crate::zp;
-use super::{Appending, Source, Sink, Speed, Symbol, Mtf, Scratch, NUM_CONTEXTS};
+use super::{Speed, Symbol, Mtf, Scratch, NUM_CONTEXTS};
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 use core::fmt::{Display, Formatter};
 use core::mem::replace;
 
@@ -306,61 +305,4 @@ impl<'dec, 'scratch> Block<'dec, 'scratch> {
             },
         )))
     }
-}
-
-pub fn decompress<I, O, E>(mut source: I, mut sink: O, scratch: &mut Scratch) -> Result<(), E>
-where
-    I: Source,
-    // XXX error stuff
-    O: Sink<Error = I::Error>,
-    E: From<I::Error> + From<Error>,
-{
-    use core::mem::ManuallyDrop;
-
-    let mut start = match source.get() {
-        None => panic!("empty input is not valid BZZ"),
-        Some(xs) => ManuallyDrop::new(start(xs)),
-    };
-    let mut last_size = 0;
-    loop {
-        let mut block = loop {
-            start = match ManuallyDrop::into_inner(start).step(scratch) {
-                Complete(None) => {
-                    sink.advance(last_size, Some(0))?; // XXX
-                    return Ok(());
-                }
-                Complete(Some(enc)) => break ManuallyDrop::new(enc),
-                Incomplete(save) => {
-                    source.advance()?;
-                    match source.get() {
-                        None => ManuallyDrop::new(save.seal()),
-                        Some(xs) => ManuallyDrop::new(save.resume(xs)),
-                    }
-                }
-            };
-        };
-        let (shuffle, next) = loop {
-            block = match ManuallyDrop::into_inner(block).step()? {
-                Complete((shuf, enc)) => break (shuf, ManuallyDrop::new(enc)),
-                Incomplete(save) => {
-                    source.advance()?;
-                    match source.get() {
-                        None => ManuallyDrop::new(save.seal()),
-                        Some(xs) => ManuallyDrop::new(save.resume(xs)),
-                    }
-                }
-            };
-        };
-        sink.advance(last_size, Some(shuffle.len()))?;
-        last_size = shuffle.len();
-        shuffle.run(sink.get());
-        start = next;
-    }
-}
-
-pub fn decompress_oneshot(bzz: &[u8]) -> Result<Vec<u8>, Error> {
-    let mut scratch = Scratch::new();
-    let mut out = Appending::new();
-    decompress::<_, _, Error>(bzz, &mut out, &mut scratch)?;
-    Ok(out.into_inner())
 }
