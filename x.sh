@@ -6,7 +6,8 @@ git config user.name "Cole Miller"
 git config user.email "m@cole-miller.net"
 
 www() {
-	cargo doc --workspace --all-features --no-deps --target x86_64-unknown-linux-gnu
+	RUSTDOCFLAGS='--cfg sndjvu_doc_cfg' \
+		cargo doc --workspace --all-features --no-deps --target x86_64-unknown-linux-gnu
 	mkdir www/rustdoc
 	cp -r target/x86_64-unknown-linux-gnu/doc/* www/rustdoc
 

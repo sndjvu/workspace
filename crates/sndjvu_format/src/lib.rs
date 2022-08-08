@@ -6,7 +6,8 @@
 
     clippy::pattern_type_mismatch,
 )]
-#![cfg_attr(sndjvu_backtrace, feature = "backtrace")]
+#![cfg_attr(sndjvu_backtrace, feature(backtrace))]
+#![cfg_attr(sndjvu_doc_cfg, feature(doc_cfg, doc_auto_cfg))]
 
 extern crate alloc;
 #[cfg(feature = "std")]
