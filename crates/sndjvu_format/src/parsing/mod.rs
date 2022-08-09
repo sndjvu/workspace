@@ -787,20 +787,6 @@ pub struct Dirm<'a> {
     pub extra: DirmExtra<'a>,
 }
 
-impl<'a> Dirm<'a> {
-    pub fn version(&self) -> crate::DirmVersion {
-        self.version
-    }
-
-    pub fn num_components(&self) -> u16 {
-        self.num_components
-    }
-
-    pub fn bundled(&self) -> Option<&Bundled<'a>> {
-        self.bundled.as_ref()
-    }
-}
-
 pub struct DirmExtra<'a> {
     num_components: u16,
     content: Field<'a>,
