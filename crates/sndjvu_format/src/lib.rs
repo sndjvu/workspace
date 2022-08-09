@@ -20,6 +20,10 @@ pub struct TxtVersion(pub u8);
 
 impl TxtVersion {
     pub const CURRENT: Self = Self(1);
+
+    fn pack(self) -> [u8; 1] {
+        [self.0]
+    }
 }
 
 impl Display for TxtVersion {

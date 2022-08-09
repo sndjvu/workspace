@@ -1,3 +1,5 @@
+#![deny(clippy::integer_arithmetic)]
+
 use crate::annot::Annot;
 use core::mem::replace;
 use alloc::string::String;
@@ -7,11 +9,48 @@ const CHUNK_HEADER_SIZE: u32 = 8;
 const COMPONENT_HEADER_SIZE: u32 = 12;
 
 #[derive(Debug)]
-pub struct Error {
+enum ErrorKind {
+    Overflow,
+    #[cfg(feature = "std")]
+    Io(std::io::Error),
 }
 
-macro_rules! checked_add {
-    ( $( $a:expr ),* $( , )? ) => { { { $( let _ = $a ; )* } Ok(0u32) } }; // TODO
+#[derive(Debug)]
+pub struct Error {
+    _kind: ErrorKind,
+    #[cfg(sndjvu_backtrace)]
+    backtrace: std::backtrace::Backtrace,
+}
+
+impl Error {
+    fn overflow() -> Self {
+        Self {
+            _kind: ErrorKind::Overflow,
+            #[cfg(sndjvu_backtrace)]
+            backtrace: std::backtrace::Backtrace::capture(),
+        }
+    }
+
+    #[cfg(feature = "std")]
+    fn io(e: std::io::Error) -> Self {
+        Self {
+            _kind: ErrorKind::Io(e),
+            #[cfg(sndjvu_backtrace)]
+            backtrace: std::backtrace::Backtrace::capture(),
+        }
+    }
+}
+
+macro_rules! checked_sum {
+    ( $( $a:expr ),* $( , )? ) => {
+        (|| -> Result<u32, Error> {
+            let mut total = 0u32;
+            $(
+                total = total.checked_add($a).ok_or_else(Error::overflow)?;
+            )*
+            Ok(total)
+        })()
+    };
 }
 
 trait Out {
@@ -21,10 +60,9 @@ trait Out {
 // TODO auto traits
 type ErasedOutMut<'wr> = &'wr mut (dyn Out + 'wr);
 
-// local wrapper to harmonize with the blanket impl below
-struct BufOut(Vec<u8>);
+struct VecOut(Vec<u8>);
 
-impl Out for BufOut {
+impl Out for VecOut {
     fn put(&mut self, b: &[u8]) -> Result<(), Error> {
         self.0.extend_from_slice(b);
         Ok(())
@@ -33,14 +71,15 @@ impl Out for BufOut {
 
 #[cfg(feature = "std")]
 impl<W: std::io::Write> Out for W {
-    fn put(&mut self, _b: &[u8]) -> Result<(), Error> {
-        todo!()
+    fn put(&mut self, b: &[u8]) -> Result<(), Error> {
+        self.write_all(b).map_err(Error::io)?;
+        Ok(())
     }
 }
 
 macro_rules! out {
     ( $o:expr ; $( $b:expr ),* $( , )? ) => {
-        (|| {
+        (|| -> Result<(), Error> {
             $( $o.put(::core::convert::AsRef::as_ref(&$b))?; )*
             Ok(())
         })()
@@ -59,21 +98,21 @@ impl ComponentSizes {
     }
 
     fn push(&mut self, size: u32) -> Result<(), Error> {
-        let size = checked_add!(size, COMPONENT_HEADER_SIZE)?;
+        let size = checked_sum!(size, COMPONENT_HEADER_SIZE)?;
         if let [0, b1, b2, b3] = size.to_be_bytes() {
             self.buf.push([b1, b2, b3]);
             Ok(())
         } else {
-            todo!()
+            Err(Error::overflow())
         }
     }
 
     fn as_bytes(&self) -> &[u8] {
-        todo!()
+        crate::shim::arrays_as_slice(&self.buf)
     }
 
     fn iter(&self) -> impl Iterator<Item = u32> + '_ {
-        core::iter::empty() // TODO
+        core::iter::empty() // TODO which values?
     }
 
     fn into_lengths(self) -> ComponentLengths {
@@ -190,15 +229,20 @@ enum Stage<'wr> {
 impl<'wr> Stage<'wr> {
     fn put(&mut self, b: &[u8]) -> Result<(), Error> {
         match *self {
-            Stage::First(ref mut _first) => {
+            Stage::First(ref mut first) => {
                 // in practice it seems we only use this to write chunk data,
                 // which means calling it without Cur::InChunk is a bug
                 // the behavior is to forward to the underlying Out and also
                 // increment the chunk counter
-                todo!()
+                let len: u32 = b.len().try_into().map_err(|_| Error::overflow())?;
+                match first.cur {
+                    Cur::InChunk { ref mut chunk, .. } => *chunk += len,
+                    _ => unreachable!(),
+                }
             }
-            Stage::Second(ref mut second) => second.put(b),
+            Stage::Second(ref mut second) => second.put(b)?,
         }
+        Ok(())
     }
 
     fn start_component(&mut self, kind: crate::ComponentKind, id: &str) -> Result<(), Error> {
@@ -213,18 +257,18 @@ impl<'wr> Stage<'wr> {
                     Cur::InChunk { chunk, mut component } => {
                         first.chunk_lens.push(chunk);
                         // final chunk of the previous component
-                        component = checked_add!(component, CHUNK_HEADER_SIZE, chunk)?;
-                        first.total = checked_add!(first.total, CHUNK_HEADER_SIZE, chunk)?;
+                        component = checked_sum!(component, CHUNK_HEADER_SIZE, chunk)?;
+                        first.total = checked_sum!(first.total, CHUNK_HEADER_SIZE, chunk)?;
                         first.component_sizes.push(component)?;
                         // padding before the new component
                         if first.total % 2 != 0 {
-                            first.total = checked_add!(first.total, 1)?;
+                            first.total = checked_sum!(first.total, 1)?;
                         } 
                     }
                 }
 
-                first.num_components = first.num_components.checked_add(1).ok_or_else(|| todo!())?;
-                first.total = checked_add!(first.total, COMPONENT_HEADER_SIZE)?;
+                first.num_components = first.num_components.checked_add(1).ok_or_else(Error::overflow)?;
+                first.total = checked_sum!(first.total, COMPONENT_HEADER_SIZE)?;
                 first.component_meta.push(kind, id);
             }
             Self::Second(ref mut second) => {
@@ -233,7 +277,7 @@ impl<'wr> Stage<'wr> {
                     out!(second; [0])?;
                 }
                 second.running += COMPONENT_HEADER_SIZE;
-                let len = second.component_lens.next().ok_or_else(|| todo!())?;
+                let len = second.component_lens.next().ok_or_else(Error::overflow)?;
                 out!(second; b"FORM", len.to_be_bytes(), kind.name())?;
             }
         }
@@ -244,16 +288,16 @@ impl<'wr> Stage<'wr> {
         match *self {
             Self::First(ref mut first) => {
                 let component = match first.cur {
-                    Cur::Start => todo!(),
+                    Cur::Start => unreachable!(),
                     Cur::InComponent => 0,
                     Cur::InChunk { chunk, mut component } => {
                         first.chunk_lens.push(chunk);
-                        first.total = checked_add!(first.total, CHUNK_HEADER_SIZE, chunk)?;
-                        component = checked_add!(component, CHUNK_HEADER_SIZE, chunk)?;
+                        first.total = checked_sum!(first.total, CHUNK_HEADER_SIZE, chunk)?;
+                        component = checked_sum!(component, CHUNK_HEADER_SIZE, chunk)?;
                         // padding before the new chunk
                         if first.total % 2 != 0 {
-                            first.total = checked_add!(first.total, 1)?;
-                            component = checked_add!(component, 1)?;
+                            first.total = checked_sum!(first.total, 1)?;
+                            component = checked_sum!(component, 1)?;
                         }
                         component
                     }
@@ -266,7 +310,7 @@ impl<'wr> Stage<'wr> {
                     out!(second; [0])?;
                 }
                 second.running += CHUNK_HEADER_SIZE;
-                let len = second.chunk_lens.next().ok_or_else(|| todo!())?;
+                let len = second.chunk_lens.next().unwrap();
                 out!(second; id, len.to_be_bytes())?;
             }
         }
@@ -283,10 +327,6 @@ pub struct Serializer<'wr> {
     repr: SerializerRepr<'wr>,
 }
 
-/// Describe your data structure in terms of the DjVu data model.
-/// 
-/// # Contract
-/// 
 pub trait Serialize {
     fn serialize(&self, serializer: Serializer<'_>) -> Result<Okay, Error>;
 }
@@ -357,17 +397,17 @@ impl<'wr> CompressDirectory<'wr> {
         let mut off: u32 = 4 + 4 + 4 + 4; // AT&T:FORM:$len:DJVM
         off += 4 + 4; // DIRM:$len
         let mut dirm_len = 1 + 2; // $flags:$num_components
-        let addl = 4u32.checked_mul(self.num_components as u32).ok_or_else(|| todo!())?;
-        dirm_len = checked_add!(dirm_len, addl)?;
-        let addl: u32 = compressed.len().try_into().map_err(|_| todo!())?;
-        dirm_len = checked_add!(dirm_len, addl)?;
-        off = checked_add!(off, dirm_len)?;
+        let addl = 4u32.checked_mul(self.num_components as u32).ok_or_else(Error::overflow)?;
+        dirm_len = checked_sum!(dirm_len, addl)?;
+        let addl: u32 = compressed.len().try_into().map_err(|_| Error::overflow())?;
+        dirm_len = checked_sum!(dirm_len, addl)?;
+        off = checked_sum!(off, dirm_len)?;
         if off % 2 != 0 {
-            off = checked_add!(off, 1)?;
+            off = checked_sum!(off, 1)?;
         }
         if let Some(navm) = navm {
-            let addl: u32 = navm.len().try_into().map_err(|_| todo!())?;
-            off = checked_add!(off, 8, addl)?;
+            let addl: u32 = navm.len().try_into().map_err(|_| Error::overflow())?;
+            off = checked_sum!(off, 8, addl)?;
         }
         let running = off; // save for later
         let mut offsets = Vec::new();
@@ -460,8 +500,8 @@ impl<'wr> SerializeComponents<'wr> {
                     Cur::InChunk { mut component, chunk } => {
                         chunk_lens.push(chunk);
                         // final chunk of the previous component
-                        component = checked_add!(component, CHUNK_HEADER_SIZE, chunk)?;
-                        total = checked_add!(total, CHUNK_HEADER_SIZE, chunk)?;
+                        component = checked_sum!(component, CHUNK_HEADER_SIZE, chunk)?;
+                        total = checked_sum!(total, CHUNK_HEADER_SIZE, chunk)?;
                         component_sizes.push(component)?;
                     }
                 }
@@ -486,7 +526,7 @@ impl<'wr> SerializeComponents<'wr> {
     }
 }
 
-pub struct SerializeElements<'co, 'wr> {
+pub struct SerializeElements<'co, 'wr: 'co> {
     stage: &'co mut Stage<'wr>,
 }
 
@@ -503,8 +543,20 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         Ok(())
     }
 
-    pub fn txta(&mut self, _text: &str, _zones: &Zones) -> Result<(), Error> {
-        todo!()
+    pub fn txta(&mut self, text: &str, zones: &Zones) -> Result<(), Error> {
+        let len: U24 = text.len().try_into()?;
+        if !zones.0.stack.is_empty() {
+            panic!()
+        }
+        self.stage.start_chunk(b"TXTa")?;
+        out!(
+            self.stage;
+            len.to_be_bytes(),
+            text,
+            crate::TxtVersion::CURRENT.pack(),
+            zones.0.raw,
+        )?;
+        Ok(())
     }
 
     pub fn txtz(&mut self, bzz: &[u8]) -> Result<(), Error> {
@@ -597,7 +649,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     // TODO Smmr
 }
 
-pub struct SerializeBg44<'el, 'wr> {
+pub struct SerializeBg44<'el, 'wr: 'el> {
     serial: u8,
     stage: &'el mut Stage<'wr>,
 }
@@ -620,7 +672,7 @@ impl<'el, 'wr: 'el> SerializeBg44<'el, 'wr> {
     }
 }
 
-pub struct SerializeThumbnails<'co, 'wr> {
+pub struct SerializeThumbnails<'co, 'wr: 'co> {
     stage: &'co mut Stage<'wr>,
 }
 
@@ -662,7 +714,7 @@ pub fn to_writer<T: Serialize, W: std::io::Write>(doc: &T, mut writer: W) -> Res
 pub fn to_vec<T: Serialize>(doc: &T) -> Result<Vec<u8>, Error> {
     let serializer = Serializer::first_stage();
     let okay = doc.serialize(serializer)?;
-    let mut buf = BufOut(Vec::with_capacity(okay.total as _));
+    let mut buf = VecOut(Vec::with_capacity(okay.total as _));
     let serializer = Serializer::second_stage(okay, &mut buf as _);
     let _okay = doc.serialize(serializer)?;
     Ok(buf.0)
@@ -681,19 +733,15 @@ impl Ant {
             let _ = write!(self.raw, " {annot}");
         }
     }
+
+    pub fn bytes(&self) -> &[u8] {
+        self.raw.as_bytes()
+    }
 }
 
 pub struct U24(u32);
 
 impl U24 {
-    pub fn new(n: u32) -> Option<Self> {
-        if n < 1 << 24 {
-            Some(Self(n))
-        } else {
-            None
-        }
-    }
-
     fn to_be_bytes(self) -> [u8; 3] {
         let [_, b1, b2, b3] = self.0.to_be_bytes();
         [b1, b2, b3]
@@ -704,7 +752,20 @@ impl U24 {
             self.0 += 1;
             Ok(())
         } else {
-            todo!()
+            Err(Error::overflow())
+        }
+    }
+}
+
+impl TryFrom<usize> for U24 {
+    type Error = Error;
+
+    fn try_from(x: usize) -> Result<Self, Self::Error> {
+        let x: u32 = x.try_into().map_err(|_| Error::overflow())?;
+        if let [0, _, _, _] = x.to_be_bytes() {
+            Ok(Self(x))
+        } else {
+            Err(Error::overflow())
         }
     }
 }
@@ -746,7 +807,7 @@ impl AddingZones {
     }
 
     fn end_zone(&mut self) {
-        let (pos, count) = self.stack.pop().unwrap(); // XXX
+        let (pos, count) = self.stack.pop().unwrap();
         self.raw[pos..pos + 3].copy_from_slice(&count.to_be_bytes()[1..]);
     }
 }
@@ -754,8 +815,16 @@ impl AddingZones {
 pub struct Txt(AddingZones);
 
 impl Txt {
-    pub fn new(_text: &str) -> Option<Self> {
-        todo!()
+    pub fn new(text: &str) -> Result<Self, Error> {
+        let mut raw = Vec::new();
+        let len: U24 = text.len().try_into()?;
+        raw.extend_from_slice(&len.to_be_bytes());
+        raw.extend_from_slice(text.as_bytes());
+        raw.extend_from_slice(&crate::TxtVersion::CURRENT.pack());
+        Ok(Self(AddingZones {
+            raw,
+            stack: Vec::new(),
+        }))
     }
 
     pub fn start_zone(
@@ -774,7 +843,10 @@ impl Txt {
         self.0.end_zone()
     }
 
-    pub fn bytes_for_compression(&self) -> &[u8] {
+    pub fn bytes(&self) -> &[u8] {
+        if !self.0.stack.is_empty() {
+            panic!()
+        }
         &self.0.raw
     }
 }
