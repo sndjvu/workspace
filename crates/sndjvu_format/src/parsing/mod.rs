@@ -1171,7 +1171,7 @@ impl<'a> SplitOuter<'a> {
     fn header<const N: usize>(&mut self) -> ProgressInternal<&'a [[u8; 4]; N]> {
         let (arrays, _) = crate::shim::slice_as_arrays(self.remaining());
         match crate::shim::slice_split_array(arrays) {
-            None => ProgressInternal::None(Some(4 * N)),
+            None => ProgressInternal::None(None),
             Some((header, _)) => {
                 self.by += 4 * N as u32; // XXX
                 ProgressInternal::Advanced(header)
@@ -1191,7 +1191,7 @@ impl<'a> SplitOuter<'a> {
             self.by += len;
             ProgressInternal::Advanced(field)
         } else {
-            ProgressInternal::None(Some(len as usize))
+            ProgressInternal::None(None)
         }
     }
 
