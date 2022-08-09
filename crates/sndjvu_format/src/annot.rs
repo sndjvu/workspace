@@ -185,14 +185,14 @@ impl Display for Displayable<Highlight> {
 
 /// Border format of a [`maparea`](Maparea) annotation.
 #[derive(Clone, Copy, Debug)]
-pub enum Border<T = u32> {
+pub enum Border {
     None,
     Xor,
     Color(Color),
-    ShadowIn(T),
-    ShadowOut(T),
-    ShadowEin(T),
-    ShadowEout(T),
+    ShadowIn(u32),
+    ShadowOut(u32),
+    ShadowEin(u32),
+    ShadowEout(u32),
 }
 
 impl Default for Border {
@@ -201,7 +201,7 @@ impl Default for Border {
     }
 }
 
-impl<T: Display> Display for Displayable<Border<T>> {
+impl Display for Displayable<Border> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self.0 {
             Border::None => write!(f, "(none)"),
@@ -211,30 +211,6 @@ impl<T: Display> Display for Displayable<Border<T>> {
             Border::ShadowOut(ref x) => write!(f, "(shadow_out {x})"),
             Border::ShadowEin(ref x) => write!(f, "(shadow_ein {x})"),
             Border::ShadowEout(ref x) => write!(f, "(shadow_eout {x})"),
-        }
-    }
-}
-
-/// Uninhabited marker type used to parametrize [`Border`].
-#[derive(Clone, Copy, Debug)]
-pub enum Basic {}
-
-impl Display for Basic {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> core::fmt::Result {
-        match *self {}
-    }
-}
-
-impl From<Border<Basic>> for Border {
-    fn from(x: Border<Basic>) -> Self {
-        match x {
-            Border::None => Self::None,
-            Border::Xor => Self::Xor,
-            Border::Color(color) => Self::Color(color),
-            Border::ShadowIn(t)
-            |   Border::ShadowOut(t)
-            |   Border::ShadowEin(t)
-            |   Border::ShadowEout(t) => match t {},
         }
     }
 }
@@ -327,132 +303,10 @@ impl Display for Shape {
 
 #[derive(Debug)]
 pub struct Maparea {
-    pub(crate) link: Link,
-    pub(crate) comment: Quoted,
-    pub(crate) shape: Shape,
-    pub(crate) border: Border,
-}
-
-impl Maparea {
-    pub fn rect(
-        link: Link,
-        comment: Quoted,
-        origin: Point,
-        width: u32,
-        height: u32,
-        border: Border,
-        border_always_visible: bool,
-        highlight: Option<Highlight>,
-    ) -> Self {
-        Self {
-            link,
-            comment,
-            shape: Shape::Rect {
-                origin,
-                width,
-                height,
-                border_always_visible,
-                highlight,
-            },
-            border,
-        }
-    }
-
-    pub fn oval(
-        link: Link,
-        comment: Quoted,
-        origin: Point,
-        width: u32,
-        height: u32,
-        border: Border<Basic>,
-        border_always_visible: bool,
-    ) -> Self {
-        Self {
-            link,
-            comment,
-            shape: Shape::Oval {
-                origin,
-                width,
-                height,
-                border_always_visible,
-            },
-            border: border.into()
-        }
-    }
-
-    pub fn text(
-        link: Link,
-        comment: Quoted,
-        origin: Point,
-        width: u32,
-        height: u32,
-        border: Border<Basic>,
-        background_color: Option<Color>,
-        text_color: Color,
-        pushpin: bool,
-    ) -> Self {
-        Self {
-            link,
-            comment,
-            shape: Shape::Text {
-                origin,
-                width,
-                height,
-                background_color,
-                text_color,
-                pushpin
-            },
-            border: border.into(),
-        }
-    }
-
-    pub fn poly(
-        link: Link,
-        comment: Quoted,
-        vertices: Vec<Point>,
-        border: Border<Basic>,
-        border_always_visible: bool,
-    ) -> Self {
-        Self {
-            link,
-            comment,
-            shape: Shape::Poly { vertices, border_always_visible },
-            border: border.into(),
-        }
-    }
-
-    pub fn line(
-        link: Link,
-        comment: Quoted,
-        endpoints: [Point; 2],
-        border: Border<Basic>,
-        arrow: bool,
-        width: u32,
-        color: Color,
-    ) -> Self {
-        Self {
-            link,
-            comment,
-            shape: Shape::Line { endpoints, arrow, width, color },
-            border: border.into(),
-        }
-    }
-
-    pub fn link(&self) -> &Link {
-        &self.link
-    }
-
-    pub fn comment(&self) -> &Quoted {
-        &self.comment
-    }
-
-    pub fn shape(&self) -> &Shape {
-        &self.shape
-    }
-
-    pub fn border(&self) -> Border {
-        self.border
-    }
+    pub link: Link,
+    pub comment: Quoted,
+    pub shape: Shape,
+    pub border: Border,
 }
 
 impl Display for Maparea {
