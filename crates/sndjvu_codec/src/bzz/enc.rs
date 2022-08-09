@@ -9,7 +9,7 @@ use core::cmp::Ordering;
 pub(super) fn bwt(input: &[u8], scratch: &mut Scratch) -> u32 {
     fn find_difference(left: &[u8], right: &[u8]) -> usize {
         // TODO SIMD or something
-        left.iter().zip(right).take_while(|(&l, &r)| l == r).count()
+        left.iter().zip(right).take_while(|&(l, r)| l == r).count()
     }
 
     let Scratch { ref mut shadow, ranks: ref mut shifts, .. } = *scratch;
@@ -36,13 +36,12 @@ pub(super) fn bwt(input: &[u8], scratch: &mut Scratch) -> u32 {
     let mut marker = None;
     shadow.extend(shifts.iter().zip(0..).map(|(&shift, k)| {
         let i = shift as i32 - 1;
-        let c = if i < 0 {
+        if i < 0 {
             marker = Some(k);
             0x00
         } else {
             input[i as usize]
-        };
-        c
+        }
     }));
     marker.unwrap()
 }

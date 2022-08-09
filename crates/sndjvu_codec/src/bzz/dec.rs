@@ -60,7 +60,7 @@ pub(super) fn bwt_inv(marker: u32, slice: &mut [u8], scratch: &mut Scratch) {
         ref mut counts,
         // like djvulibre's posn
         ref mut ranks,
-    } = scratch;
+    } = *scratch;
 
     assert_eq!(slice.len() + 1, shadow.len());
     ranks.clear();

@@ -307,7 +307,7 @@ impl<'wr> Serializer<'wr> {
 
     fn second_stage(okay: Okay, out: ErasedOutMut<'wr>) -> Self {
         let Okay { num_components, dirm_data, chunk_lens, component_sizes, total } = okay;
-        drop(total);
+        let _ = total; // XXX
         Self {
             repr: SerializerRepr::Second(CompressDirectory {
                 num_components,

@@ -122,7 +122,7 @@ pub enum ComponentKind {
 
 impl ComponentKind {
     fn name(&self) -> &'static [u8; 4] {
-        match self {
+        match *self {
             Self::Djvi => b"DJVI",
             Self::Djvu => b"DJVU",
             Self::Thum => b"THUM",
@@ -166,9 +166,9 @@ impl<B: AsRef<[u8]>> Debug for Bstr<B> {
 
         fn len_following(byte: u8) -> Option<usize> {
             if byte <= 0x7F {
-                return Some(1);
+                Some(1)
             } else if byte & 0b1100_0000 == 0b1000_0000 {
-                return None;
+                None
             } else if byte <= 0b1101_1111 {
                 Some(2)
             } else if byte <= 0b1110_1111 {

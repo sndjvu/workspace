@@ -49,7 +49,7 @@ impl State {
             self.a = z_0 as u16;
             return mps;
         }
-        let d = 0x60_00 + (z_0 + (self.a as u64) >> 2);
+        let d = 0x60_00 + (z_0 + self.a as u64) / 4;
         let z = z_0.min(d);
         assert!(z <= u16::MAX as u64); // FIXME possible to prove that this will never fail?
         let z = z as u16;
@@ -198,10 +198,10 @@ impl<'a> Decoder<'a> {
     // FIXME is this correct?
     pub fn new(buf: &'a [u8]) -> Self {
         // let front = buf[..2].try_into().unwrap(); // XXX
-        let (front, pos) = match buf {
-            &[] => ([0xff, 0xff], 0),
-            &[b_0] => ([b_0, 0xff], 1),
-            &[b_0, b_1, ..] => ([b_0, b_1], 2),
+        let (front, pos) = match *buf {
+            [] => ([0xff, 0xff], 0),
+            [b_0] => ([b_0, 0xff], 1),
+            [b_0, b_1, ..] => ([b_0, b_1], 2),
         };
         let c = u16::from_be_bytes(front);
         Self {
