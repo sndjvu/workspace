@@ -4,9 +4,13 @@ use crate::annot::Annot;
 use core::mem::replace;
 use alloc::string::String;
 use alloc::vec::Vec;
+#[cfg(sndjvu_backtrace)]
+use std::backtrace::Backtrace;
 
 const CHUNK_HEADER_SIZE: u32 = 8;
 const COMPONENT_HEADER_SIZE: u32 = 12;
+
+pub struct OverflowError;
 
 #[derive(Debug)]
 enum ErrorKind {
@@ -17,26 +21,28 @@ enum ErrorKind {
 
 #[derive(Debug)]
 pub struct Error {
-    _kind: ErrorKind,
+    kind: ErrorKind,
     #[cfg(sndjvu_backtrace)]
     backtrace: std::backtrace::Backtrace,
 }
 
 impl Error {
-    fn overflow() -> Self {
+    #[cfg(feature = "std")]
+    fn io(e: std::io::Error) -> Self {
         Self {
-            _kind: ErrorKind::Overflow,
+            kind: ErrorKind::Io(e),
             #[cfg(sndjvu_backtrace)]
             backtrace: std::backtrace::Backtrace::capture(),
         }
     }
+}
 
-    #[cfg(feature = "std")]
-    fn io(e: std::io::Error) -> Self {
+impl From<OverflowError> for Error {
+    fn from(_: OverflowError) -> Self {
         Self {
-            _kind: ErrorKind::Io(e),
+            kind: ErrorKind::Overflow,
             #[cfg(sndjvu_backtrace)]
-            backtrace: std::backtrace::Backtrace::capture(),
+            backtrace: Backtrace::capture(),
         }
     }
 }
@@ -46,20 +52,21 @@ macro_rules! checked_sum {
         (|| -> Result<u32, Error> {
             let mut total = 0u32;
             $(
-                total = total.checked_add($a).ok_or_else(Error::overflow)?;
+                total = total.checked_add($a).ok_or(OverflowError)?;
             )*
             Ok(total)
         })()
     };
 }
 
-trait Out {
+trait Out: core::fmt::Debug {
     fn put(&mut self, b: &[u8]) -> Result<(), Error>;
 }
 
 // TODO auto traits
 type ErasedOutMut<'wr> = &'wr mut (dyn Out + 'wr);
 
+#[derive(Debug)]
 struct VecOut(Vec<u8>);
 
 impl Out for VecOut {
@@ -70,7 +77,7 @@ impl Out for VecOut {
 }
 
 #[cfg(feature = "std")]
-impl<W: std::io::Write> Out for W {
+impl<W: std::io::Write + core::fmt::Debug> Out for W {
     fn put(&mut self, b: &[u8]) -> Result<(), Error> {
         self.write_all(b).map_err(Error::io)?;
         Ok(())
@@ -88,6 +95,7 @@ macro_rules! out {
 
 // Note: the sizes stored in this type are as they appear in (the compressed portion of)
 // the DIRM chunk, so they include the 12 bytes FORM:$len:$kind
+#[derive(Debug)]
 struct ComponentSizes {
     buf: Vec<[u8; 3]>,
 }
@@ -103,7 +111,7 @@ impl ComponentSizes {
             self.buf.push([b1, b2, b3]);
             Ok(())
         } else {
-            Err(Error::overflow())
+            Err(OverflowError.into())
         }
     }
 
@@ -112,7 +120,7 @@ impl ComponentSizes {
     }
 
     fn iter(&self) -> impl Iterator<Item = u32> + '_ {
-        core::iter::empty() // TODO which values?
+        self.buf.iter().map(|&[b1, b2, b3]| u32::from_be_bytes([0, b1, b2, b3]))
     }
 
     fn into_lengths(self) -> ComponentLengths {
@@ -120,6 +128,7 @@ impl ComponentSizes {
     }
 }
 
+#[derive(Debug)]
 struct ComponentLengths {
     inner: <Vec<[u8; 3]> as IntoIterator>::IntoIter,
 }
@@ -134,6 +143,7 @@ impl Iterator for ComponentLengths {
     }
 }
 
+#[derive(Debug)]
 struct ComponentMeta {
     flags_buf: Vec<u8>,
     ids_buf: Vec<u8>,
@@ -174,6 +184,7 @@ impl Okay {
     }
 }
 
+#[derive(Debug)]
 enum Cur {
     // empty document, neither start_component nor start_chunk called
     Start,
@@ -191,6 +202,7 @@ enum Cur {
     },
 }
 
+#[derive(Debug)]
 struct First {
     chunk_lens: Vec<u32>,
     component_sizes: ComponentSizes,
@@ -205,6 +217,7 @@ struct First {
     total: u32,
 }
 
+#[derive(Debug)]
 struct Second<'wr> {
     chunk_lens: <Vec<u32> as IntoIterator>::IntoIter,
     component_lens: ComponentLengths,
@@ -221,6 +234,7 @@ impl<'wr> Second<'wr> {
     }
 }
 
+#[derive(Debug)]
 enum Stage<'wr> {
     First(First),
     Second(Second<'wr>),
@@ -234,7 +248,7 @@ impl<'wr> Stage<'wr> {
                 // which means calling it without Cur::InChunk is a bug
                 // the behavior is to forward to the underlying Out and also
                 // increment the chunk counter
-                let len: u32 = b.len().try_into().map_err(|_| Error::overflow())?;
+                let len: u32 = b.len().try_into().map_err(|_| OverflowError)?;
                 match first.cur {
                     Cur::InChunk { ref mut chunk, .. } => *chunk += len,
                     _ => unreachable!(),
@@ -267,7 +281,7 @@ impl<'wr> Stage<'wr> {
                     }
                 }
 
-                first.num_components = first.num_components.checked_add(1).ok_or_else(Error::overflow)?;
+                first.num_components = first.num_components.checked_add(1).ok_or(OverflowError)?;
                 first.total = checked_sum!(first.total, COMPONENT_HEADER_SIZE)?;
                 first.component_meta.push(kind, id);
             }
@@ -277,7 +291,7 @@ impl<'wr> Stage<'wr> {
                     out!(second; [0])?;
                 }
                 second.running += COMPONENT_HEADER_SIZE;
-                let len = second.component_lens.next().ok_or_else(Error::overflow)?;
+                let len = second.component_lens.next().ok_or(OverflowError)?;
                 out!(second; b"FORM", len.to_be_bytes(), kind.name())?;
             }
         }
@@ -320,7 +334,7 @@ impl<'wr> Stage<'wr> {
 
 enum SerializerRepr<'wr> {
     First(First),
-    Second(CompressDirectory<'wr>),
+    Second(SerializeMultiPageHead<'wr>),
 }
 
 pub struct Serializer<'wr> {
@@ -349,7 +363,7 @@ impl<'wr> Serializer<'wr> {
         let Okay { num_components, dirm_data, chunk_lens, component_sizes, total } = okay;
         let _ = total; // XXX
         Self {
-            repr: SerializerRepr::Second(CompressDirectory {
+            repr: SerializerRepr::Second(SerializeMultiPageHead {
                 num_components,
                 dirm_data,
                 chunk_lens,
@@ -362,10 +376,10 @@ impl<'wr> Serializer<'wr> {
     /// Begin serializing a bundled multi-page document.
     pub fn multi_page_bundled(self) -> SerializeMultiPageBundled<'wr> {
         match self.repr {
-            SerializerRepr::First(first) => SerializeMultiPageBundled::SerializeComponents(
+            SerializerRepr::First(first) => SerializeMultiPageBundled::Components(
                 SerializeComponents { stage: Stage::First(first) },
             ),
-            SerializerRepr::Second(compress_dirm) => SerializeMultiPageBundled::CompressDirectory(compress_dirm),
+            SerializerRepr::Second(compress_dirm) => SerializeMultiPageBundled::Head(compress_dirm),
         }
     }
 
@@ -373,12 +387,11 @@ impl<'wr> Serializer<'wr> {
 }
 
 pub enum SerializeMultiPageBundled<'wr> {
-    CompressDirectory(CompressDirectory<'wr>), // FIXME name
-    SerializeComponents(SerializeComponents<'wr>),
+    Head(SerializeMultiPageHead<'wr>),
+    Components(SerializeComponents<'wr>),
 }
 
-// FIXME name
-pub struct CompressDirectory<'wr> {
+pub struct SerializeMultiPageHead<'wr> {
     num_components: u16,
     dirm_data: Vec<u8>,
     chunk_lens: Vec<u32>,
@@ -386,7 +399,7 @@ pub struct CompressDirectory<'wr> {
     out: ErasedOutMut<'wr>,
 }
 
-impl<'wr> CompressDirectory<'wr> {
+impl<'wr> SerializeMultiPageHead<'wr> {
     pub fn for_compression(&self) -> &[u8] {
         &self.dirm_data
     }
@@ -397,16 +410,16 @@ impl<'wr> CompressDirectory<'wr> {
         let mut off: u32 = 4 + 4 + 4 + 4; // AT&T:FORM:$len:DJVM
         off += 4 + 4; // DIRM:$len
         let mut dirm_len = 1 + 2; // $flags:$num_components
-        let addl = 4u32.checked_mul(self.num_components as u32).ok_or_else(Error::overflow)?;
+        let addl = 4u32.checked_mul(self.num_components as u32).ok_or(OverflowError)?;
         dirm_len = checked_sum!(dirm_len, addl)?;
-        let addl: u32 = compressed.len().try_into().map_err(|_| Error::overflow())?;
+        let addl: u32 = compressed.len().try_into().map_err(|_| OverflowError)?;
         dirm_len = checked_sum!(dirm_len, addl)?;
         off = checked_sum!(off, dirm_len)?;
         if off % 2 != 0 {
             off = checked_sum!(off, 1)?;
         }
         if let Some(navm) = navm {
-            let addl: u32 = navm.len().try_into().map_err(|_| Error::overflow())?;
+            let addl: u32 = navm.len().try_into().map_err(|_| OverflowError)?;
             off = checked_sum!(off, 8, addl)?;
         }
         let running = off; // save for later
@@ -446,6 +459,7 @@ impl<'wr> CompressDirectory<'wr> {
     }
 }
 
+#[derive(Debug)]
 pub struct SerializeComponents<'wr> {
     stage: Stage<'wr>,
 }
@@ -608,7 +622,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         height: u16,
         initial_cdc: crate::Cdc,
         iw44: &[u8],
-    ) -> Result<SerializeBg44<'_, 'wr>, Error> {
+    ) -> Result<SerializeBg44Chunks<'_, 'wr>, Error> {
         self.stage.start_chunk(b"BG44")?;
         out!(
             self.stage;
@@ -620,7 +634,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
             [initial_cdc.get()],
             iw44,
         )?;
-        Ok(SerializeBg44 {
+        Ok(SerializeBg44Chunks {
             serial: 1,
             stage: &mut self.stage,
         })
@@ -649,12 +663,12 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     // TODO Smmr
 }
 
-pub struct SerializeBg44<'el, 'wr: 'el> {
+pub struct SerializeBg44Chunks<'el, 'wr: 'el> {
     serial: u8,
     stage: &'el mut Stage<'wr>,
 }
 
-impl<'el, 'wr: 'el> SerializeBg44<'el, 'wr> {
+impl<'el, 'wr: 'el> SerializeBg44Chunks<'el, 'wr> {
     pub fn chunk(
         &mut self,
         num_slices: u8,
@@ -703,7 +717,7 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
 }
 
 #[cfg(feature = "std")]
-pub fn to_writer<T: Serialize, W: std::io::Write>(doc: &T, mut writer: W) -> Result<(), Error> {
+pub fn to_writer<T: Serialize, W: std::io::Write + core::fmt::Debug>(doc: &T, mut writer: W) -> Result<(), Error> {
     let serializer = Serializer::first_stage();
     let okay = doc.serialize(serializer)?;
     let serializer = Serializer::second_stage(okay, &mut writer as _);
@@ -747,25 +761,25 @@ impl U24 {
         [b1, b2, b3]
     }
 
-    fn inc(&mut self) -> Result<(), Error> {
+    fn inc(&mut self) -> Result<(), OverflowError> {
         if self.0 + 1 < 1 << 24 {
             self.0 += 1;
             Ok(())
         } else {
-            Err(Error::overflow())
+            Err(OverflowError)
         }
     }
 }
 
 impl TryFrom<usize> for U24 {
-    type Error = Error;
+    type Error = OverflowError;
 
     fn try_from(x: usize) -> Result<Self, Self::Error> {
-        let x: u32 = x.try_into().map_err(|_| Error::overflow())?;
+        let x: u32 = x.try_into().map_err(|_| OverflowError)?;
         if let [0, _, _, _] = x.to_be_bytes() {
             Ok(Self(x))
         } else {
-            Err(Error::overflow())
+            Err(OverflowError)
         }
     }
 }
@@ -785,7 +799,7 @@ impl AddingZones {
         width: i16,
         height: i16,
         text_len: U24,
-    ) -> Result<(), Error> {
+    ) -> Result<(), OverflowError> {
         fn cvt(n: i16) -> u16 {
             (n as u16) ^ (1 << 15)
         }
@@ -808,7 +822,7 @@ impl AddingZones {
 
     fn end_zone(&mut self) {
         let (pos, count) = self.stack.pop().unwrap();
-        self.raw[pos..pos + 3].copy_from_slice(&count.to_be_bytes()[1..]);
+        self.raw[pos..pos + 3].copy_from_slice(&count.to_be_bytes());
     }
 }
 
@@ -835,7 +849,7 @@ impl Txt {
         width: i16,
         height: i16,
         text_len: U24,
-    ) -> Result<(), Error> {
+    ) -> Result<(), OverflowError> {
         self.0.start_zone(kind, offset_x, offset_y, width, height, text_len)
     }
 
@@ -867,11 +881,52 @@ impl Zones {
         width: i16,
         height: i16,
         text_len: U24,
-    ) -> Result<(), Error> {
+    ) -> Result<(), OverflowError> {
         self.0.start_zone(kind, offset_x, offset_y, width, height, text_len)
     }
 
     pub fn end_zone(&mut self) {
         self.0.end_zone()
+    }
+}
+
+pub struct Outline {
+    raw: Vec<u8>,
+    count: u16,
+    stack: Vec<(usize, u8)>,
+}
+
+impl Outline {
+    pub fn new() -> Self {
+        Self { raw: alloc::vec![0, 0], count: 0, stack: Vec::new() }
+    }
+
+    pub fn start_bookmark(&mut self, description: &str, url: &str) -> Result<(), OverflowError> {
+        let description_len: U24 = description.len().try_into()?;
+        let url_len: U24 = url.len().try_into()?;
+        self.count += 1;
+        self.raw[0..2].copy_from_slice(&self.count.to_be_bytes());
+        if let Some(&mut (_, ref mut n)) = self.stack.last_mut() {
+            *n = (*n).checked_add(1).ok_or(OverflowError)?;
+        }
+        self.stack.push((self.raw.len(), 0));
+        self.raw.push(0); // fixed up later
+        self.raw.extend_from_slice(&description_len.to_be_bytes());
+        self.raw.extend_from_slice(description.as_bytes());
+        self.raw.extend_from_slice(&url_len.to_be_bytes());
+        self.raw.extend_from_slice(url.as_bytes());
+        Ok(())
+    }
+
+    pub fn end_bookmark(&mut self) {
+        let (i, n) = self.stack.pop().unwrap();
+        self.raw[i] = n;
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        if !self.stack.is_empty() {
+            panic!()
+        }
+        &self.raw
     }
 }
