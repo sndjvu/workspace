@@ -1,4 +1,4 @@
-use super::{StringField, Error, error_placeholder};
+use super::{StringField, Error};
 use crate::annot::*;
 use alloc::vec::Vec;
 
@@ -52,7 +52,7 @@ impl<'a> ParsingAnnots<'a> {
                             Some(x @ b'0'..=b'9') => x - b'0',
                             Some(x @ b'a'..=b'f') => x - b'a' + 10,
                             Some(x @ b'A'..=b'F') => x - b'A' + 10,
-                            _ => return Err(error_placeholder()),
+                            _ => return Err(Error::placeholder()),
                         };
                     }
                 }
@@ -65,7 +65,7 @@ impl<'a> ParsingAnnots<'a> {
             }
             Some(a) if a.is_ascii_alphabetic() => todo!(), // word/key
             Some(d) if d.is_ascii_digit() => todo!(), // number
-            _ => return Err(error_placeholder()),
+            _ => return Err(Error::placeholder()),
         };
         self.pos += i + len;
         Ok(tok)
@@ -73,7 +73,7 @@ impl<'a> ParsingAnnots<'a> {
 
     fn token(&mut self) -> Result<Token<'a>, Error> {
         match self.maybe_token()? {
-            None => Err(error_placeholder()),
+            None => Err(Error::placeholder()),
             Some(token) => Ok(token),
         }
     }
@@ -85,48 +85,48 @@ impl<'a> ParsingAnnots<'a> {
         };
         match tok {
             Token::Open => {},
-            _ => return Err(error_placeholder()),
+            _ => return Err(Error::placeholder()),
         }
         match self.maybe_token()? {
             Some(Token::Word(bare)) => Ok(Some(bare)),
-            _ => return Err(error_placeholder()),
+            _ => Err(Error::placeholder()),
         }
     }
 
     fn open(&mut self) -> Result<&'a [u8], Error> {
-        self.maybe_open()?.ok_or_else(error_placeholder)
+        self.maybe_open()?.ok_or_else(Error::placeholder)
     }
 
     fn color(&mut self) -> Result<Color, Error> {
         match self.token()? {
             Token::Color(color) => Ok(color),
-            _ => Err(error_placeholder()),
+            _ => Err(Error::placeholder()),
         }
     }
 
     fn word(&mut self) -> Result<&'a [u8], Error> {
         match self.token()? {
             Token::Word(word) => Ok(word),
-            _ => Err(error_placeholder()),
+            _ => Err(Error::placeholder()),
         }
     }
 
     fn close(&mut self) -> Result<(), Error> {
         match self.token()? {
             Token::Close => Ok(()),
-            _ => Err(error_placeholder()),
+            _ => Err(Error::placeholder()),
         }
     }
 
     fn quoted(&mut self) -> Result<Quoted, Error> {
-        self.maybe_quoted()?.ok_or_else(error_placeholder)
+        self.maybe_quoted()?.ok_or_else(Error::placeholder)
     }
 
     fn maybe_quoted(&mut self) -> Result<Option<Quoted>, Error> {
         match self.maybe_token()? {
             None => Ok(None),
             Some(Token::Quoted(quoted)) => Ok(Some(quoted)),
-            _ => Err(error_placeholder()),
+            _ => Err(Error::placeholder()),
         }
     }
 
@@ -137,12 +137,12 @@ impl<'a> ParsingAnnots<'a> {
     fn number(&mut self) -> Result<u32, Error> {
         match self.token()? {
             Token::Number(number) => Ok(number),
-            _ => Err(error_placeholder()),
+            _ => Err(Error::placeholder()),
         }
     }
 
     fn point(&mut self) -> Result<Point, Error> {
-        self.maybe_point()?.ok_or_else(error_placeholder)
+        self.maybe_point()?.ok_or_else(Error::placeholder)
     }
 
     fn maybe_point(&mut self) -> Result<Option<Point>, Error> {
@@ -155,9 +155,9 @@ impl<'a> ParsingAnnots<'a> {
                     *self = dup;
                     Ok(Some(Point { x, y }))
                 }
-                _ => Err(error_placeholder()),
+                _ => Err(Error::placeholder()),
             }
-            _ => Err(error_placeholder()),
+            _ => Err(Error::placeholder()),
         }
     }
 
@@ -178,7 +178,7 @@ impl<'a> ParsingAnnots<'a> {
                     b"width" => Zoom::Width,
                     b"page" => Zoom::Page,
                     &[b'd', ref _rest @ ..] => todo!(),
-                    _ => return Err(error_placeholder()),
+                    _ => return Err(Error::placeholder()),
                 };
                 Annot::Zoom(val)
             }
@@ -188,7 +188,7 @@ impl<'a> ParsingAnnots<'a> {
                     b"bw" => Mode::Bw,
                     b"fore" => Mode::Fore,
                     b"black" => Mode::Black,
-                    _ => return Err(error_placeholder()),
+                    _ => return Err(Error::placeholder()),
                 };
                 Annot::Mode(val)
             }
@@ -197,13 +197,13 @@ impl<'a> ParsingAnnots<'a> {
                     b"left" => HorizAlign::Left,
                     b"center" | b"default" => HorizAlign::Center,
                     b"right" => HorizAlign::Right,
-                    _ => return Err(error_placeholder()),
+                    _ => return Err(Error::placeholder()),
                 };
                 let vert = match self.word()? {
                     b"top" => VertAlign::Top,
                     b"center" | b"default" => VertAlign::Center,
                     b"bottom" => VertAlign::Bottom,
-                    _ => return Err(error_placeholder()),
+                    _ => return Err(Error::placeholder()),
                 };
                 Annot::Align { horiz, vert }
             }
@@ -212,7 +212,7 @@ impl<'a> ParsingAnnots<'a> {
                 let link = match self.token()? {
                     Token::Open => {
                         if self.word()? != b"url" {
-                            return Err(error_placeholder());
+                            return Err(Error::placeholder());
                         }
                         let dest = self.quoted()?;
                         let target = self.quoted()?;
@@ -221,7 +221,7 @@ impl<'a> ParsingAnnots<'a> {
                     Token::Quoted(dest) => {
                         Link { dest, target: None }
                     }
-                    _ => return Err(error_placeholder()),
+                    _ => return Err(Error::placeholder()),
                 };
                 let comment = self.quoted()?;
                 let shape = match self.open()? {
@@ -254,7 +254,7 @@ impl<'a> ParsingAnnots<'a> {
                         let endpoints = [self.point()?, self.point()?];
                         Shape::Line { endpoints, arrow: false, width: 1, color: Color::BLACK }
                     }
-                    _ => return Err(error_placeholder()),
+                    _ => return Err(Error::placeholder()),
                 };
                 self.close()?;
                 let mut maparea = Maparea {
@@ -274,28 +274,28 @@ impl<'a> ParsingAnnots<'a> {
                         }
                         b"shadow_in" => {
                             if !matches!(maparea.shape, Shape::Rect { .. }) {
-                                return Err(error_placeholder());
+                                return Err(Error::placeholder());
                             }
                             let thickness = self.number()?;
                             maparea.border = Border::ShadowIn(thickness);
                         }
                         b"shadow_out" => {
                             if !matches!(maparea.shape, Shape::Rect { .. }) {
-                                return Err(error_placeholder());
+                                return Err(Error::placeholder());
                             }
                             let thickness = self.number()?;
                             maparea.border = Border::ShadowOut(thickness);
                         }
                         b"shadow_ein" => {
                             if !matches!(maparea.shape, Shape::Rect { .. }) {
-                                return Err(error_placeholder());
+                                return Err(Error::placeholder());
                             }
                             let thickness = self.number()?;
                             maparea.border = Border::ShadowEin(thickness);
                         }
                         b"shadow_eout" => {
                             if !matches!(maparea.shape, Shape::Rect { .. }) {
-                                return Err(error_placeholder());
+                                return Err(Error::placeholder());
                             }
                             let thickness = self.number()?;
                             maparea.border = Border::ShadowEout(thickness);
@@ -305,7 +305,7 @@ impl<'a> ParsingAnnots<'a> {
                                 Shape::Rect { ref mut border_always_visible, .. }
                                 | Shape::Oval { ref mut border_always_visible, .. }
                                 | Shape::Poly { ref mut border_always_visible, ..} => *border_always_visible = true,
-                                _ => return Err(error_placeholder()),
+                                _ => return Err(Error::placeholder()),
                             }
                         }
 
@@ -313,35 +313,35 @@ impl<'a> ParsingAnnots<'a> {
                             let color = self.color()?;
                             match maparea.shape {
                                 Shape::Rect { ref mut highlight, .. } => *highlight = Some(Highlight { color, opacity: 50 }),
-                                _ => return Err(error_placeholder()),
+                                _ => return Err(Error::placeholder()),
                             }
                         }
                         b"opacity" => {
                             let n = self.number()?;
                             match maparea.shape {
                                 Shape::Rect { highlight: Some(Highlight { ref mut opacity, .. }), .. } => *opacity = n,
-                                _ => return Err(error_placeholder()),
+                                _ => return Err(Error::placeholder()),
                             }
                         }
 
                         b"arrow" => {
                             match maparea.shape {
                                 Shape::Line { ref mut arrow, .. } => *arrow = true,
-                                _ => return Err(error_placeholder()),
+                                _ => return Err(Error::placeholder()),
                             }
                         }
                         b"width" => {
                             let n = self.number()?;
                             match maparea.shape {
                                 Shape::Line { ref mut width, .. } => *width = n,
-                                _ => return Err(error_placeholder()),
+                                _ => return Err(Error::placeholder()),
                             }
                         }
                         b"lineclr" => {
                             let col = self.color()?;
                             match maparea.shape {
                                 Shape::Line { ref mut color, .. } => *color = col,
-                                _ => return Err(error_placeholder()),
+                                _ => return Err(Error::placeholder()),
                             }
                         }
 
@@ -349,23 +349,23 @@ impl<'a> ParsingAnnots<'a> {
                             let color = self.color()?;
                             match maparea.shape {
                                 Shape::Text { ref mut background_color, .. } => *background_color = Some(color),
-                                _ => return Err(error_placeholder()),
+                                _ => return Err(Error::placeholder()),
                             }
                         }
                         b"textclr" => {
                             let color = self.color()?;
                             match maparea.shape {
                                 Shape::Text { ref mut text_color, .. } => *text_color = color,
-                                _ => return Err(error_placeholder()),
+                                _ => return Err(Error::placeholder()),
                             }
                         }
                         b"pushpin" => {
                             match maparea.shape {
                                 Shape::Text { ref mut pushpin, .. } => *pushpin = true,
-                                _ => return Err(error_placeholder()),
+                                _ => return Err(Error::placeholder()),
                             }
                         }
-                        _ => return Err(error_placeholder()),
+                        _ => return Err(Error::placeholder()),
                     }
                     self.close()?;
                 }
@@ -394,7 +394,7 @@ impl<'a> ParsingAnnots<'a> {
                 let xml = self.quoted()?;
                 Annot::Xmp(xml)
             }
-            _ => return Err(error_placeholder()),
+            _ => return Err(Error::placeholder()),
         };
 
         self.close()?;

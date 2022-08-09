@@ -1,44 +1,7 @@
 //! Low-level parser for the DjVu transfer format.
-//!
-//! ## Rundown
-//!
-//! ### Entry points
-//!
-//! - [`document`]
-//! - [`indirect_component`]
-//!
-//! ### Pointer types
-//!
-//! - [`ComponentP`]
-//! - [`ElementP`]
-//! - [`ThumbnailP`]
-//!
-//! ### Raw chunks
-//!
-//! ### Parsed chunks
-//!
-//! ## More on "pointers"
-//!
-//! Here's an illustration of how to think about [`ComponentP`] and [`ElementP`]
-//! ([`ThumbnailP`] is completely analogous):
-//!
-//! ```text
-//!                                       ElementP  ElementP  ElementP  ElementP
-//!                                       v         v         v         v
-//! +-----------+------+-----------+------+---------+---------+---------+
-//! | FORM:DJVM | DIRM | FORM:DJVU | INFO | element | element | element |
-//! +-----------+------+-----------+------+---------+---------+---------+
-//!                    ^                                                ^
-//!                    ComponentP                                       ComponentP
-//! ```
-//!
-//! Of note, all these types can validly be "one-past-the-end". This extends the
-//! analogy with pointers and is necessary anyway to support documents with no
-//! components and components with no elements or thumbnails. Trying to `feed`
-//! a one-past-the-end value will always return [`Progress::End`].
 
 use crate::Bstr;
-use core::fmt::{Debug, Formatter};
+use core::fmt::{Debug, Display, Formatter};
 use core::num::NonZeroU8;
 use alloc::vec::Vec;
 #[cfg(sndjvu_backtrace)]
@@ -94,23 +57,26 @@ pub struct Error {
     backtrace: Backtrace,
 }
 
-impl core::fmt::Display for Error {
-    fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        #[cfg(sndjvu_backtrace)]
-        { write!(_f, "{}", self.backtrace)?; }
+impl Error {
+    fn placeholder() -> Self {
+        Self {
+            #[cfg(sndjvu_backtrace)]
+            backtrace: Backtrace::capture(),
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> core::fmt::Result {
+        #[cfg(sndjvu_backtrace)] {
+            write!(_f, "{}", self.backtrace)?;
+        }
         Ok(())
     }
 }
 
 #[cfg(feature = "std")]
 impl std::error::Error for Error {}
-
-fn error_placeholder() -> Error {
-    Error {
-        #[cfg(sndjvu_backtrace)]
-        backtrace: Backtrace::capture(),
-    }
-}
 
 pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
     let mut s = split_outer(data, 0, None); // don't know end_pos yet
@@ -137,7 +103,7 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
             DocumentHead::MultiPage { dirm, navm }
 
         }
-        _ => return Err(error_placeholder()),
+        _ => return Err(Error::placeholder()),
     };
     Ok(advanced(head, s))
 }
@@ -369,7 +335,7 @@ impl Zone {
             let p = arr as *const _ as *const Zone;
             let x = unsafe { *core::ptr::addr_of!((*p).kind).cast::<u8>() };
             if !(1..=7).contains(&x) {
-                return Err(error_placeholder());
+                return Err(Error::placeholder());
             }
         }
 
@@ -656,7 +622,7 @@ impl<'a> RawSmmr<'a> {
         let mut s = self.content.split();
         let magic = s.array()?;
         if magic != b"MMR" {
-            return Err(error_placeholder());
+            return Err(Error::placeholder());
         }
         let flags = s.byte()?;
         let is_reverse_video = flags & 0b1 != 0;
@@ -823,7 +789,7 @@ impl<'a> DirmExtra<'a> {
                 0 => crate::ComponentKind::Djvi,
                 1 => crate::ComponentKind::Djvu,
                 2 => crate::ComponentKind::Thum,
-                _ => return Err(error_placeholder()),
+                _ => return Err(Error::placeholder()),
             }
         }
         for entry in &mut meta {
@@ -1244,10 +1210,10 @@ impl<'a> SplitOuter<'a> {
         let &[id, xs, kind] = try_advance_internal!(self.header());
         let len = u32::from_be_bytes(xs);
         if &id != b"FORM" {
-            return Err(error_placeholder());
+            return Err(Error::placeholder());
         }
         if !is_potential_chunk_id(kind) {
-            return Err(error_placeholder());
+            return Err(Error::placeholder());
         }
         Ok(ProgressInternal::Advanced((kind, len - 4)))
     }
@@ -1257,13 +1223,13 @@ impl<'a> SplitOuter<'a> {
         let &[magic, id, xs, kind] = try_advance_internal!(self.header());
         let len = u32::from_be_bytes(xs);
         if &magic != b"AT&T" {
-            return Err(error_placeholder());
+            return Err(Error::placeholder());
         }
         if &id != b"FORM" {
-            return Err(error_placeholder());
+            return Err(Error::placeholder());
         }
         if !is_potential_chunk_id(kind) {
-            return Err(error_placeholder());
+            return Err(Error::placeholder());
         }
         Ok(ProgressInternal::Advanced((kind, len - 4)))
     }
@@ -1273,7 +1239,7 @@ impl<'a> SplitOuter<'a> {
         let &[id, xs] = try_advance_internal!(self.header());
         let len = u32::from_be_bytes(xs);
         if !is_potential_chunk_id(id) {
-            return Err(error_placeholder());
+            return Err(Error::placeholder());
         }
         let content = try_advance_internal!(self.field(len));
         Ok(ProgressInternal::Advanced((id, content)))
@@ -1282,7 +1248,7 @@ impl<'a> SplitOuter<'a> {
     fn specific_chunk(&mut self, expected: &[u8; 4]) -> Result<ProgressInternal<Field<'a>>, Error> {
         let (id, content) = try_advance_internal!(self.chunk()?);
         if &id != expected {
-            return Err(error_placeholder());
+            return Err(Error::placeholder());
         }
         Ok(ProgressInternal::Advanced(content))
     }
@@ -1292,7 +1258,7 @@ impl<'a> SplitOuter<'a> {
         try_advance_internal!(s.align());
         let &[id] = try_advance_internal!(s.header());
         if !is_potential_chunk_id(id) {
-            return Err(error_placeholder());
+            return Err(Error::placeholder());
         }
         Ok(ProgressInternal::Advanced(id))
     }
@@ -1314,7 +1280,7 @@ impl<'a> SplitOuter<'a> {
                 let thumbnails = ThumbnailP::new(self.pos(), end_pos);
                 ComponentHead::Thum { thumbnails }
             }
-            _ => return Err(error_placeholder()),
+            _ => return Err(Error::placeholder()),
         };
         Ok(ProgressInternal::Advanced(head))
     }
@@ -1371,7 +1337,7 @@ impl<'a> SplitInner<'a> {
             self.by += N as u32; // XXX
             Ok(array)
         } else {
-            Err(error_placeholder())
+            Err(Error::placeholder())
         }
     }
 
@@ -1381,7 +1347,7 @@ impl<'a> SplitInner<'a> {
             self.by += n as u32 * N as u32; // XXX
             Ok(arrays)
         } else {
-            Err(error_placeholder())
+            Err(Error::placeholder())
         }
     }
 
@@ -1394,7 +1360,7 @@ impl<'a> SplitInner<'a> {
             self.by += n as u32; // XXX
             Ok(slice)
         } else {
-            Err(error_placeholder())
+            Err(Error::placeholder())
         }
     }
 
@@ -1404,7 +1370,7 @@ impl<'a> SplitInner<'a> {
             self.by += i as u32 + 1;
             Ok(s)
         } else {
-            Err(error_placeholder())
+            Err(Error::placeholder())
         }
     }
 
@@ -1448,7 +1414,7 @@ impl<'a> SplitInner<'a> {
         if rest.is_empty() {
             Ok(arrays)
         } else {
-            Err(error_placeholder())
+            Err(Error::placeholder())
         }
     }
 }
