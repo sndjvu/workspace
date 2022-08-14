@@ -1,4 +1,9 @@
 #![no_std]
+#![allow(
+    clippy::needless_lifetimes,
+    clippy::new_without_default,
+    clippy::wrong_self_convention,
+)]
 #![deny(
     elided_lifetimes_in_paths,
     unsafe_op_in_unsafe_fn,
@@ -14,6 +19,7 @@ extern crate alloc;
 extern crate std;
 
 use core::fmt::{Debug, Display, Formatter};
+use core::marker::PhantomData;
 
 #[derive(Clone, Copy, Debug)]
 pub struct TxtVersion(pub u8);
@@ -57,6 +63,10 @@ pub struct FgbzVersion(u8);
 
 impl FgbzVersion {
     pub const CURRENT: Self = Self(0);
+
+    fn pack(self, has_indices: bool) -> [u8; 1] {
+        [((has_indices as u8) << 7) | self.0]
+    }
 }
 
 impl Display for FgbzVersion {
@@ -99,7 +109,7 @@ pub struct DirmVersion(u8);
 impl DirmVersion {
     pub const CURRENT: Self = Self(1);
 
-    fn pack(self, is_bundled: IsBundled) -> [u8; 1] {
+    fn pack(self, is_bundled: bool) -> [u8; 1] {
         [self.0 | ((is_bundled as u8) << 7)]
     }
 }
@@ -108,13 +118,6 @@ impl Display for DirmVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.0)
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-enum IsBundled {
-    #[allow(unused)]
-    No,
-    Yes,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -222,7 +225,7 @@ impl<B: AsRef<[u8]>> Debug for Bstr<B> {
                 | '\x7f' => {
                     write!(f, "\\x{:02x}", ch as u32)?;
                 }
-                '\n' | '\r' | '\t' | _ => {
+                /* '\n' | '\r' | '\t' | */ _ => {
                     write!(f, "{}", ch.escape_debug())?;
                 }
             }
@@ -231,6 +234,143 @@ impl<B: AsRef<[u8]>> Debug for Bstr<B> {
         Ok(())
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+#[repr(transparent)]
+pub struct PaletteIndex([u8; 2]);
+
+impl PaletteIndex {
+    fn cast_slice(arrays: &[[u8; 2]]) -> &[Self] {
+        // SAFETY PaletteIndex is repr(transparent)
+        unsafe {
+            core::slice::from_raw_parts(
+                arrays.as_ptr().cast(),
+                arrays.len(),
+            )
+        }
+    }
+
+    pub fn get(self) -> u16 {
+        u16::from_be_bytes(self.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct PaletteEntry {
+    pub b: u8,
+    pub g: u8,
+    pub r: u8,
+}
+
+impl PaletteEntry {
+    fn cast_slice(arrays: &[[u8; 3]]) -> &[Self] {
+        // SAFETY PaletteEntry is repr(C) with the same layout as [u8; 3]
+        unsafe {
+            core::slice::from_raw_parts(
+                arrays.as_ptr().cast(),
+                arrays.len(),
+            )
+        }
+    }
+
+    fn uncast_slice(slice: &[Self]) -> &[[u8; 3]] {
+        // SAFETY PaletteEntry is repr(C) with the same layout as [u8; 3]
+        unsafe {
+            core::slice::from_raw_parts(
+                slice.as_ptr().cast(),
+                slice.len(),
+            )
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct Zone {
+    kind: crate::ZoneKind,
+    x_offset: [u8; 2],
+    y_offset: [u8; 2],
+    width: [u8; 2],
+    height: [u8; 2],
+    _empty: [u8; 2],
+    text_len: [u8; 3],
+    num_children: [u8; 3],
+}
+
+fn cvt_zone_i16(bytes: [u8; 2]) -> i16 {
+    i16::from_be_bytes(bytes) ^ (1 << 15)
+}
+
+impl Zone {
+    fn as_bytes(&self) -> &[u8; 17] {
+        unsafe { &*((self as *const Self).cast()) }
+    }
+
+    fn cast_slice(arrays: &[[u8; 17]]) -> Option<&[Self]> {
+        for arr in arrays {
+            let p = arr as *const _ as *const Zone;
+            let x = unsafe { *core::ptr::addr_of!((*p).kind).cast::<u8>() };
+            if !(1..=7).contains(&x) {
+                return None;
+            }
+        }
+
+        // SAFETY Zone has the same layout as [u8; 17], with no padding,
+        // and we've checked that the kind fields have valid values
+        let zones = unsafe {
+            core::slice::from_raw_parts(
+                arrays.as_ptr().cast(),
+                arrays.len(),
+            )
+        };
+        Some(zones)
+    }
+
+    fn uncast_slice(slice: &[Self]) -> &[[u8; 17]] {
+        unsafe { 
+            core::slice::from_raw_parts(
+                slice.as_ptr().cast(),
+                slice.len(),
+            )
+        }
+    }
+
+    pub fn kind(self) -> crate::ZoneKind {
+        self.kind
+    }
+
+    pub fn x_offset(self) -> i16 {
+        cvt_zone_i16(self.x_offset)
+    }
+
+    pub fn y_offset(self) -> i16 {
+        cvt_zone_i16(self.y_offset)
+    }
+
+    pub fn width(self) -> i16 {
+        cvt_zone_i16(self.width)
+    }
+
+    pub fn height(self) -> i16 {
+        cvt_zone_i16(self.height)
+    }
+
+    pub fn text_len(self) -> u32 {
+        let [b1, b2, b3] = self.text_len;
+        u32::from_be_bytes([0, b1, b2, b3])
+    }
+
+    pub fn num_children(self) -> u32 {
+        let [b1, b2, b3] = self.num_children;
+        u32::from_be_bytes([0, b1, b2, b3])
+    }
+}
+
+#[derive(Debug)]
+struct PhantomMutable(PhantomData<(&'static mut (), core::cell::UnsafeCell<()>)>);
+
+unsafe impl Sync for PhantomMutable {}
 
 pub mod annot;
 pub mod parsing;

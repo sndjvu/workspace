@@ -1,7 +1,12 @@
 //! Low-level parser for the DjVu transfer format.
 
-use crate::Bstr;
+use crate::{
+    Bstr, PaletteIndex, PhantomMutable, PageRotation, InfoVersion,
+    TxtVersion, Zone, Iw44ColorSpace, Iw44Version, Cdc, FgbzVersion,
+    PaletteEntry, DirmVersion, ComponentKind,
+};
 use core::fmt::{Debug, Display, Formatter};
+use core::marker::PhantomData;
 use core::num::NonZeroU8;
 use alloc::vec::Vec;
 #[cfg(sndjvu_backtrace)]
@@ -55,6 +60,7 @@ macro_rules! try_advance {
 pub struct Error {
     #[cfg(sndjvu_backtrace)]
     backtrace: Backtrace,
+    _mutable: PhantomMutable,
 }
 
 impl Error {
@@ -62,14 +68,16 @@ impl Error {
         Self {
             #[cfg(sndjvu_backtrace)]
             backtrace: Backtrace::capture(),
+            _mutable: PhantomMutable(PhantomData),
         }
     }
 }
 
 impl Display for Error {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "parsing failed")?;
         #[cfg(sndjvu_backtrace)] {
-            write!(_f, "{}", self.backtrace)?;
+            write!(f, "\n\n{}", self.backtrace)?;
         }
         Ok(())
     }
@@ -145,16 +153,16 @@ impl<'a> RawInfo<'a> {
         let gamma = s.byte()?;
         let flags = s.byte()?;
         let rotation = match flags & 0b111 {
-            1 => crate::PageRotation::Up,
-            6 => crate::PageRotation::Ccw,
-            2 => crate::PageRotation::Down,
-            5 => crate::PageRotation::Cw,
-            _ => crate::PageRotation::Up, // see djvuchanges.txt
+            1 => PageRotation::Up,
+            6 => PageRotation::Ccw,
+            2 => PageRotation::Down,
+            5 => PageRotation::Cw,
+            _ => PageRotation::Up, // see djvuchanges.txt
         };
         Ok(Info {
             width,
             height,
-            version: crate::InfoVersion { major, minor },
+            version: InfoVersion { major, minor },
             dpi,
             gamma,
             rotation,
@@ -165,10 +173,10 @@ impl<'a> RawInfo<'a> {
 pub struct Info {
     pub width: u16,
     pub height: u16,
-    pub version: crate::InfoVersion,
+    pub version: InfoVersion,
     pub dpi: u16,
     pub gamma: u8,
-    pub rotation: crate::PageRotation,
+    pub rotation: PageRotation,
 }
 
 fn is_potential_chunk_id(xs: [u8; 4]) -> bool {
@@ -283,7 +291,7 @@ impl<'a> RawTxtz<'a> {
 
 pub struct Txt<'a> {
     pub text: &'a [u8],
-    pub version: crate::TxtVersion,
+    pub version: TxtVersion,
     pub zones: &'a [Zone],
 }
 
@@ -301,83 +309,14 @@ impl<'a> Txt<'a> {
     fn parse_from(mut s: SplitInner<'a>) -> Result<Self, Error> {
         let len = s.u24_be()?;
         let text = s.slice(len as usize)?;
-        let version = s.byte().map(crate::TxtVersion)?;
+        let version = s.byte().map(TxtVersion)?;
         let raw_zones = s.rest_arrays()?;
-        let zones = Zone::cast_slice(raw_zones)?;
+        let zones = Zone::cast_slice(raw_zones).ok_or_else(Error::placeholder)?;
         Ok(Txt {
             text,
             version,
             zones,
         })
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct Zone {
-    kind: crate::ZoneKind,
-    x_offset: [u8; 2],
-    y_offset: [u8; 2],
-    width: [u8; 2],
-    height: [u8; 2],
-    _empty: [u8; 2],
-    text_len: [u8; 3],
-    num_children: [u8; 3],
-}
-
-fn cvt_zone_i16(bytes: [u8; 2]) -> i16 {
-    i16::from_be_bytes(bytes) ^ (1 << 15)
-}
-
-impl Zone {
-    fn cast_slice(arrays: &[[u8; 17]]) -> Result<&[Self], Error> {
-        for arr in arrays {
-            let p = arr as *const _ as *const Zone;
-            let x = unsafe { *core::ptr::addr_of!((*p).kind).cast::<u8>() };
-            if !(1..=7).contains(&x) {
-                return Err(Error::placeholder());
-            }
-        }
-
-        // SAFETY Zone has the same layout as [u8; 17], with no padding,
-        // and we've checked that the kind fields have valid values
-        let zones = unsafe {
-            core::slice::from_raw_parts(
-                arrays.as_ptr().cast(),
-                arrays.len(),
-            )
-        };
-        Ok(zones)
-    }
-
-    pub fn kind(self) -> crate::ZoneKind {
-        self.kind
-    }
-
-    pub fn x_offset(self) -> i16 {
-        cvt_zone_i16(self.x_offset)
-    }
-
-    pub fn y_offset(self) -> i16 {
-        cvt_zone_i16(self.y_offset)
-    }
-
-    pub fn width(self) -> i16 {
-        cvt_zone_i16(self.width)
-    }
-
-    pub fn height(self) -> i16 {
-        cvt_zone_i16(self.height)
-    }
-
-    pub fn text_len(self) -> u32 {
-        let [b1, b2, b3] = self.text_len;
-        u32::from_be_bytes([0, b1, b2, b3])
-    }
-
-    pub fn num_children(self) -> u32 {
-        let [b1, b2, b3] = self.num_children;
-        u32::from_be_bytes([0, b1, b2, b3])
     }
 }
 
@@ -444,16 +383,16 @@ impl<'a> Iw44<'a> {
         } else {
             let byte = s.byte()?;
             let colors = if byte & (1 << 7) != 0 {
-                crate::Iw44ColorSpace::Gray
+                Iw44ColorSpace::Gray
             } else {
-                crate::Iw44ColorSpace::YCbCr
+                Iw44ColorSpace::YCbCr
             };
             let major = byte & 0b0111_1111;
             let minor = s.byte()?;
-            let version = crate::Iw44Version { major, minor };
+            let version = Iw44Version { major, minor };
             let width = s.u16_be()?;
             let height = s.u16_be()?;
-            let initial_cdc = crate::Cdc(s.byte()?);
+            let initial_cdc = Cdc(s.byte()?);
             Iw44Kind::Head {
                 version,
                 colors,
@@ -474,11 +413,11 @@ impl<'a> Iw44<'a> {
 #[derive(Clone, Copy, Debug)]
 pub enum Iw44Kind {
     Head {
-        version: crate::Iw44Version,
-        colors: crate::Iw44ColorSpace,
+        version: Iw44Version,
+        colors: Iw44ColorSpace,
         width: u16,
         height: u16,
-        initial_cdc: crate::Cdc,
+        initial_cdc: Cdc,
     },
     Tail { serial: NonZeroU8 },
 }
@@ -494,7 +433,7 @@ impl<'a> RawFgbz<'a> {
         let mut s = self.content.split();
         let byte = s.byte()?;
         let has_indices = byte & (1 << 7) != 0;
-        let version = crate::FgbzVersion(byte & 0b0111_1111);
+        let version = FgbzVersion(byte & 0b0111_1111);
         let num_entries = s.u16_be()?;
         let raw_palette = s.slice_of_arrays(num_entries as usize)?;
         let palette = PaletteEntry::cast_slice(raw_palette);
@@ -512,7 +451,7 @@ impl<'a> RawFgbz<'a> {
 }
 
 pub struct Fgbz<'a> {
-    pub version: crate::FgbzVersion,
+    pub version: FgbzVersion,
     pub palette: &'a [PaletteEntry],
     pub indices: Option<FgbzIndices<'a>>,
 }
@@ -532,46 +471,6 @@ impl<'a> FgbzIndices<'a> {
         let raw_indices = s.slice_of_arrays(num_indices as usize)?;
         let indices = PaletteIndex::cast_slice(raw_indices);
         Ok(indices)
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct PaletteEntry {
-    pub b: u8,
-    pub g: u8,
-    pub r: u8,
-}
-
-impl PaletteEntry {
-    fn cast_slice(arrays: &[[u8; 3]]) -> &[Self] {
-        // SAFETY PaletteEntry is repr(C) with the same layout as [u8; 3]
-        unsafe {
-            core::slice::from_raw_parts(
-                arrays.as_ptr().cast(),
-                arrays.len(),
-            )
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-#[repr(transparent)]
-pub struct PaletteIndex([u8; 2]);
-
-impl PaletteIndex {
-    fn cast_slice(arrays: &[[u8; 2]]) -> &[Self] {
-        // SAFETY PaletteIndex is repr(transparent)
-        unsafe {
-            core::slice::from_raw_parts(
-                arrays.as_ptr().cast(),
-                arrays.len(),
-            )
-        }
-    }
-
-    pub fn get(self) -> u16 {
-        u16::from_be_bytes(self.0)
     }
 }
 
@@ -727,7 +626,7 @@ impl<'a> RawDirm<'a> {
         let mut s = self.content.split();
         let flags = s.byte()?;
         let is_bundled = flags & (1 << 7) != 0;
-        let version = crate::DirmVersion(flags & 0b0111_1111);
+        let version = DirmVersion(flags & 0b0111_1111);
         let num_components = s.u16_be()?;
         let bundled = if is_bundled {
             let arrays = s.slice_of_arrays(num_components as usize)?;
@@ -747,7 +646,7 @@ impl<'a> RawDirm<'a> {
 }
 
 pub struct Dirm<'a> {
-    pub version: crate::DirmVersion,
+    pub version: DirmVersion,
     pub num_components: u16,
     pub bundled: Option<Bundled<'a>>,
     pub extra: DirmExtra<'a>,
@@ -767,7 +666,7 @@ impl<'a> DirmExtra<'a> {
         let mut s = self.content.decoded(decoded).split();
         let init_meta = ComponentMeta {
             len: 0,
-            kind: crate::ComponentKind::Djvi,
+            kind: ComponentKind::Djvi,
             id: b"",
             name: None,
             title: None,
@@ -786,9 +685,9 @@ impl<'a> DirmExtra<'a> {
                 entry.title = Some(b"");
             }
             entry.kind = match flags & 0b0011_1111 {
-                0 => crate::ComponentKind::Djvi,
-                1 => crate::ComponentKind::Djvu,
-                2 => crate::ComponentKind::Thum,
+                0 => ComponentKind::Djvi,
+                1 => ComponentKind::Djvu,
+                2 => ComponentKind::Thum,
                 _ => return Err(Error::placeholder()),
             }
         }
@@ -808,7 +707,7 @@ impl<'a> DirmExtra<'a> {
 #[derive(Clone)]
 pub struct ComponentMeta<'a> {
     pub len: u32,
-    pub kind: crate::ComponentKind,
+    pub kind: ComponentKind,
     pub id: &'a [u8],
     pub name: Option<&'a [u8]>,
     pub title: Option<&'a [u8]>,
@@ -1307,7 +1206,7 @@ impl<'a> Field<'a> {
         }
     }
 
-    fn decoded<'dec>(self, decoded: &'dec [u8]) -> Field<'dec> {
+    fn decoded(self, decoded: &[u8]) -> Field<'_> {
         Field {
             full: decoded,
             start: 0,
