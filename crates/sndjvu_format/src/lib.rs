@@ -155,15 +155,6 @@ pub enum Iw44ColorSpace {
     Gray,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct Cdc(u8);
-
-impl Cdc {
-    pub fn get(self) -> u8 {
-        self.0
-    }
-}
-
 #[derive(Clone, Copy)]
 struct Bstr<B>(B);
 

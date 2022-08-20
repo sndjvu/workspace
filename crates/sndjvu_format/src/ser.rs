@@ -7,7 +7,7 @@
 #![deny(clippy::integer_arithmetic)]
 
 use crate::{
-    Cdc, ComponentKind, DirmVersion, FgbzVersion, InfoVersion,
+    ComponentKind, DirmVersion, FgbzVersion, InfoVersion,
     Iw44ColorSpace, Iw44Version, PageRotation, PaletteEntry,
     PhantomMutable, TxtVersion, Zone, ZoneKind,
 };
@@ -684,9 +684,12 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         color_space: Iw44ColorSpace,
         width: u16,
         height: u16,
-        initial_cdc: Cdc,
+        initial_cdc: u8,
         iw44: &[u8],
     ) -> Result<(), Error> {
+        if initial_cdc > 0x7f {
+            panic!() // XXX
+        }
         self.stage.start_chunk(b"FG44")?;
         out!(
             self.stage;
@@ -695,7 +698,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
             Iw44Version::CURRENT.pack(color_space),
             width.to_be_bytes(),
             height.to_be_bytes(),
-            [initial_cdc.get()],
+            [initial_cdc],
             iw44,
         )?;
         Ok(())
@@ -708,9 +711,12 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         color_space: Iw44ColorSpace,
         width: u16,
         height: u16,
-        initial_cdc: Cdc,
+        initial_cdc: u8,
         iw44: &[u8],
     ) -> Result<SerializeBg44Chunks<'_, 'wr>, Error> {
+        if initial_cdc > 0x7f {
+            panic!() // XXX
+        }
         self.stage.start_chunk(b"BG44")?;
         out!(
             self.stage;
@@ -719,7 +725,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
             Iw44Version::CURRENT.pack(color_space),
             width.to_be_bytes(),
             height.to_be_bytes(),
-            [initial_cdc.get()],
+            [initial_cdc],
             iw44,
         )?;
         Ok(SerializeBg44Chunks {
@@ -808,9 +814,12 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
         color_space: Iw44ColorSpace,
         width: u16,
         height: u16,
-        initial_cdc: Cdc,
+        initial_cdc: u8,
         iw44: &[u8],
     ) -> Result<(), Error> {
+        if initial_cdc > 0x7f {
+            panic!() // XXX
+        }
         self.stage.start_chunk(b"TH44")?;
         let version = Iw44Version::CURRENT;
         out!(
@@ -820,7 +829,7 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
             version.pack(color_space),
             width.to_be_bytes(),
             height.to_be_bytes(),
-            [initial_cdc.get()],
+            [initial_cdc],
             iw44,
         )?;
         Ok(())

@@ -2,7 +2,7 @@
 
 use crate::{
     Bstr, PaletteIndex, PhantomMutable, PageRotation, InfoVersion,
-    TxtVersion, Zone, Iw44ColorSpace, Iw44Version, Cdc, FgbzVersion,
+    TxtVersion, Zone, Iw44ColorSpace, Iw44Version, FgbzVersion,
     PaletteEntry, DirmVersion, ComponentKind,
 };
 use core::fmt::{Debug, Display, Formatter};
@@ -379,7 +379,7 @@ impl<'a> Iw44<'a> {
             let version = Iw44Version { major, minor };
             let width = s.u16_be()?;
             let height = s.u16_be()?;
-            let initial_cdc = Cdc(s.byte()?);
+            let initial_cdc = s.byte()? & 0x7f;
             Iw44Kind::Head {
                 version,
                 colors,
@@ -404,7 +404,7 @@ pub enum Iw44Kind {
         colors: Iw44ColorSpace,
         width: u16,
         height: u16,
-        initial_cdc: Cdc,
+        initial_cdc: u8,
     },
     Tail { serial: NonZeroU8 },
 }
