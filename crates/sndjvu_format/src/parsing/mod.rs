@@ -1204,9 +1204,20 @@ impl<'a> Field<'a> {
     }
 }
 
-// TODO custom Debug impl using Bstr
 #[derive(Clone, Copy)]
 struct StringField<'a>(Field<'a>);
+
+impl<'a> Debug for StringField<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("StringField")
+            .field("full", &Bstr(self.0.full))
+            .field("start", &self.0.start)
+            .field("start_pos", &self.0.start_pos)
+            .field("end", &self.0.end)
+            .field("bzz", &self.0.bzz)
+            .finish()
+    }
+}
 
 struct SplitInner<'a> {
     parent: Field<'a>,
