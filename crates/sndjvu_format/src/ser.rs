@@ -13,7 +13,6 @@ use crate::{
 };
 use crate::annot::Annot;
 use core::fmt::{Debug, Display, Formatter};
-use core::marker::PhantomData;
 use core::mem::replace;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -80,7 +79,7 @@ impl Error {
             kind: ErrorKind::Io(e),
             #[cfg(sndjvu_backtrace)]
             backtrace: Backtrace::capture(),
-            _mutable: PhantomMutable(PhantomData),
+            _mutable: PhantomMutable,
         }
     }
 }
@@ -91,7 +90,7 @@ impl From<OverflowError> for Error {
             kind: ErrorKind::Overflow,
             #[cfg(sndjvu_backtrace)]
             backtrace: Backtrace::capture(),
-            _mutable: PhantomMutable(PhantomData),
+            _mutable: PhantomMutable,
         }
     }
 }

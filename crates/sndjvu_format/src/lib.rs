@@ -367,10 +367,10 @@ impl Zone {
     }
 }
 
-#[derive(Debug)]
-struct PhantomMutable(PhantomData<(&'static mut (), core::cell::UnsafeCell<()>)>);
+type PhantomMutable = PhantomData<dyn core::any::Any + Send + Sync + core::marker::Unpin>;
 
-unsafe impl Sync for PhantomMutable {}
+#[allow(non_upper_case_globals)]
+const PhantomMutable: PhantomMutable = PhantomData;
 
 pub mod annot;
 pub mod parsing;

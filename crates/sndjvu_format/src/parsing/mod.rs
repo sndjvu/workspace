@@ -6,7 +6,6 @@ use crate::{
     PaletteEntry, DirmVersion, ComponentKind,
 };
 use core::fmt::{Debug, Display, Formatter};
-use core::marker::PhantomData;
 use core::num::NonZeroU8;
 use alloc::vec::Vec;
 #[cfg(sndjvu_backtrace)]
@@ -68,7 +67,7 @@ impl Error {
         Self {
             #[cfg(sndjvu_backtrace)]
             backtrace: Backtrace::capture(),
-            _mutable: PhantomMutable(PhantomData),
+            _mutable: PhantomMutable,
         }
     }
 }
