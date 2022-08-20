@@ -27,7 +27,7 @@ impl Symbol {
 #[derive(Debug)]
 pub struct Scratch {
     shadow: Vec<u8>,
-    counts: Box<[u32; 256]>, // XXX not needed for compression?
+    counts: Option<Box<[u32; 256]>>, // XXX not needed for compression?
     ranks: Vec<u32>,
 }
 
@@ -41,7 +41,7 @@ impl Scratch {
     pub fn new() -> Self {
         Self {
             shadow: Vec::new(),
-            counts: Box::new([0; 256]),
+            counts: None, // initialized on demand
             ranks: Vec::new(),
         }
     }

@@ -64,7 +64,13 @@ pub(super) fn bwt_inv(marker: u32, slice: &mut [u8], scratch: &mut Scratch) {
 
     assert_eq!(slice.len() + 1, shadow.len());
     ranks.clear();
-    **counts = [0; 256];
+    let counts = match *counts {
+        None => counts.insert(Box::new([0; 256])),
+        Some(ref mut xs) => {
+            **xs = [0; 256];
+            xs
+        }
+    };
     ranks.extend(shadow.iter().zip(0u32..).map(|(&sym, i)| {
         if i == marker {
             0

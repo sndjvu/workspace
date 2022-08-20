@@ -197,7 +197,6 @@ impl<'a> Decoder<'a> {
 
     // FIXME is this correct?
     pub fn new(buf: &'a [u8]) -> Self {
-        // let front = buf[..2].try_into().unwrap(); // XXX
         let (front, pos) = match *buf {
             [] => ([0xff, 0xff], 0),
             [b_0] => ([b_0, 0xff], 1),
