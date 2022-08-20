@@ -223,15 +223,9 @@ impl<'a> Element<'a> {
 }
 
 pub struct RawAnta<'a> {
-    content: StringField<'a>,
+    _content: StringField<'a>,
     after_pos: Pos,
     end_pos: Pos,
-}
-
-impl<'a> RawAnta<'a> {
-    pub fn parsing(&self) -> ParsingAnnots<'a> {
-        ParsingAnnots::new(self.content)
-    }
 }
 
 pub struct RawAntz<'a> {
@@ -246,18 +240,12 @@ impl<'a> RawAntz<'a> {
     }
 
     pub fn decoded<'dec>(&self, decoded: &'dec [u8]) -> DecodedAntz<'dec> {
-        DecodedAntz { content: StringField(self.content.decoded(decoded)) }
+        DecodedAntz { _content: StringField(self.content.decoded(decoded)) }
     }
 }
 
 pub struct DecodedAntz<'a> {
-    content: StringField<'a>,
-}
-
-impl<'a> DecodedAntz<'a> {
-    pub fn parsing(&self) -> ParsingAnnots<'a> {
-        ParsingAnnots::new(self.content)
-    }
+    _content: StringField<'a>,
 }
 
 pub struct RawTxta<'a> {
@@ -935,7 +923,7 @@ impl ElementP {
         let after_pos = s.pos();
         let end_pos = self.end_pos;
         let element = match &kind {
-            b"ANTa" => Element::Anta(RawAnta { content: StringField(content), after_pos, end_pos }),
+            b"ANTa" => Element::Anta(RawAnta { _content: StringField(content), after_pos, end_pos }),
             b"ANTz" => Element::Antz(RawAntz { content, after_pos, end_pos }),
             b"TXTa" => Element::Txta(RawTxta { content, after_pos, end_pos }),
             b"TXTz" => Element::Txtz(RawTxtz { content, after_pos, end_pos }),
@@ -1316,6 +1304,3 @@ impl<'a> SplitInner<'a> {
         }
     }
 }
-
-mod ant;
-pub use ant::ParsingAnnots;

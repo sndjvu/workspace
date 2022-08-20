@@ -1,28 +1,55 @@
 use core::fmt::{Display, Formatter};
 use alloc::string::String;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+struct Displayable<T>(T);
+
 #[derive(Clone, Debug)]
-pub struct Key(String);
+pub struct Key(Arc<str>);
 
 impl Display for Key {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> core::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Quoted {
-    _data: Vec<u8>,
+    // data is stored in *escaped* repr, without surrounding quotes
+    data: Arc<str>,
 }
 
-impl Display for Quoted {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> core::fmt::Result {
-        todo!()
+impl Quoted {
+    pub fn escape(s: &str) -> Self {
+        use core::fmt::Write;
+
+        let mut data = String::new();
+        for c in s.chars() {
+            match c {
+                '"' => data.push_str("\\\""),
+                '\\' => data.push_str("\\\\"),
+                np if np < ' ' || np == '\x7f' => {
+                    let _ = write!(&mut data, "\\{:03o}", np as u32);
+                }
+                other => data.push(other),
+            }
+        }
+        Self { data: s.into() }
     }
 }
 
-/// The arguments to a [`phead`](Annot::Phead) or [`pfoot`](Annot::Pfoot) annotation.
+impl Display for Quoted {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let s = &*self.data;
+        if f.alternate() {
+            write!(f, "{s}")
+        } else {
+            write!(f, "\"{s}\"")
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MarginStrings {
     pub left: Option<Quoted>,
@@ -30,11 +57,21 @@ pub struct MarginStrings {
     pub right: Option<Quoted>,
 }
 
-struct Displayable<T>(T);
-
 impl<'a> Display for Displayable<&'a MarginStrings> {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> core::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let mut pad = "";
+        if let Some(ref left) = self.0.left {
+            write!(f, "\"left::{left:#}\"")?;
+            pad = " ";
+        }
+        if let Some(ref center) = self.0.center {
+            write!(f, "{pad}\"center::{center:#}\"")?;
+            pad = " ";
+        }
+        if let Some(ref right) = self.0.right {
+            write!(f, "{pad}\"right::{right:#}\"")?;
+        }
+        Ok(())
     }
 }
 
@@ -301,6 +338,33 @@ impl Display for Shape {
     }
 }
 
+/// A `maparea` annotation.
+///
+/// ```
+/// # use sndjvu_format::annot::*;
+/// let dest = Quoted::escape("http://www.lizardtech.com/");
+/// let comment = Quoted::escape("Here is a rectangular hyperlink");
+/// let shape = Shape::Rect {
+///     origin: Point { x: 543, y: 2859 },
+///     width: 408,
+///     height: 183,
+///     border_always_visible: false,
+///     highlight: None,
+/// };
+/// let annot = Maparea {
+///     link: Link { dest, target: None },
+///     comment,
+///     shape,
+///     border: Border::Xor,
+/// };
+/// assert_eq!(
+///     annot.to_string(),
+///     "(maparea \
+///         \"http://www.lizardtech.com/\" \
+///         \"Here is a rectangular hyperlink\" \
+///         (rect 543 2859 408 183) (xor))",
+/// );
+/// ```
 #[derive(Debug)]
 pub struct Maparea {
     pub link: Link,
@@ -316,6 +380,22 @@ impl Display for Maparea {
     }
 }
 
+/// A single annotation.
+///
+/// ```
+/// # use sndjvu_format::annot::*;
+/// let annots = [
+///     Annot::Background(Color { r: 0xff, g: 0xff, b: 0xff }),
+///     Zoom::Page.into(),
+///     Mode::Bw.into(),
+///     Annot::Align { horiz: HorizAlign::Center, vert: VertAlign::Top },
+/// ];
+/// let s = annots.iter().map(Annot::to_string).collect::<Vec<_>>().join(" ");
+/// assert_eq!(
+///     s,
+///     "(background #FFFFFF) (zoom page) (mode bw) (align center top)",
+/// );
+/// ```
 #[derive(Debug)]
 pub enum Annot {
     Background(Color),
