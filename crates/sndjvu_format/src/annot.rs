@@ -3,10 +3,23 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-struct Displayable<T>(T);
+struct Di<T>(T);
+
+pub struct InvalidKeyError;
 
 #[derive(Clone, Debug)]
 pub struct Key(Arc<str>);
+
+impl Key {
+    pub fn new(s: &str) -> Result<Self, InvalidKeyError> {
+        if s.chars().nth(0).map_or(false, |c| c.is_ascii_alphabetic()) &&
+            s.chars().all(|c| c.is_ascii_alphanumeric()) {
+            Ok(Self(s.into()))
+        } else {
+            Err(InvalidKeyError)
+        }
+    }
+}
 
 impl Display for Key {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -21,7 +34,7 @@ pub struct Quoted {
 }
 
 impl Quoted {
-    pub fn escape(s: &str) -> Self {
+    pub fn new(s: &str) -> Self {
         use core::fmt::Write;
 
         let mut data = String::new();
@@ -35,7 +48,7 @@ impl Quoted {
                 other => data.push(other),
             }
         }
-        Self { data: s.into() }
+        Self { data: data.into() }
     }
 }
 
@@ -57,7 +70,7 @@ pub struct MarginStrings {
     pub right: Option<Quoted>,
 }
 
-impl<'a> Display for Displayable<&'a MarginStrings> {
+impl<'a> Display for Di<&'a MarginStrings> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let mut pad = "";
         if let Some(ref left) = self.0.left {
@@ -200,7 +213,7 @@ pub struct Point {
     pub y: u32,
 }
 
-impl Display for Displayable<Point> {
+impl Display for Di<Point> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let Self(Point { x, y }) = *self;
         write!(f, "{x} {y}")
@@ -213,7 +226,7 @@ pub struct Highlight {
     pub opacity: u32,
 }
 
-impl Display for Displayable<Highlight> {
+impl Display for Di<Highlight> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let Self(Highlight { color, opacity }) = *self;
         write!(f, "(hilite {color}) (opacity {opacity})")
@@ -234,13 +247,13 @@ pub enum Border {
 
 impl Default for Border {
     fn default() -> Self {
-        Self::None // XXX
+        Self::None
     }
 }
 
-impl Display for Displayable<Border> {
+impl Display for Border {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self.0 {
+        match *self {
             Border::None => write!(f, "(none)"),
             Border::Xor => write!(f, "(xor)"),
             Border::Color(color) => write!(f, "(border {color})"),
@@ -252,7 +265,7 @@ impl Display for Displayable<Border> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Shape {
     Rect {
         origin: Point,
@@ -291,22 +304,22 @@ impl Display for Shape {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match *self {
             Self::Rect { origin, width, height, border_always_visible, highlight } => {
-                write!(f, "(rect {} {width} {height})", Displayable(origin))?;
+                write!(f, "(rect {} {width} {height})", Di(origin))?;
                 if border_always_visible {
                     write!(f, " (border_avis)")?;
                 }
-                if let Some(highlight) = highlight {
-                    write!(f, "{}", Displayable(highlight))?;
+                if let Some(Highlight { color, opacity }) = highlight {
+                    write!(f, " (hilite {color}) (opacity {opacity})")?;
                 }
             }
             Self::Oval { origin, width, height, border_always_visible } => {
-                write!(f, "(oval {} {width} {height})", Displayable(origin))?;
+                write!(f, "(oval {} {width} {height})", Di(origin))?;
                 if border_always_visible {
                     write!(f, " (border_avis)")?;
                 }
             }
             Self::Text { origin, width, height, background_color, text_color, pushpin } => {
-                write!(f, "(text {} {width} {height})", Displayable(origin))?;
+                write!(f, "(text {} {width} {height})", Di(origin))?;
                 if let Some(color) = background_color {
                     write!(f, " (backclr {color})")?;
                 }
@@ -318,7 +331,7 @@ impl Display for Shape {
             Self::Poly { ref vertices, border_always_visible } => {
                 write!(f, "(poly")?;
                 for &point in vertices {
-                    write!(f, " {}", Displayable(point))?;
+                    write!(f, " {}", Di(point))?;
                 }
                 write!(f, ")")?;
                 if border_always_visible {
@@ -326,7 +339,7 @@ impl Display for Shape {
                 }
             }
             Self::Line { endpoints: [start, end], arrow, width, color } => {
-                write!(f, "(line {} {})", Displayable(start), Displayable(end))?;
+                write!(f, "(line {} {})", Di(start), Di(end))?;
                 if arrow {
                     write!(f, " (arrow)")?;
                 }
@@ -342,8 +355,8 @@ impl Display for Shape {
 ///
 /// ```
 /// # use sndjvu_format::annot::*;
-/// let dest = Quoted::escape("http://www.lizardtech.com/");
-/// let comment = Quoted::escape("Here is a rectangular hyperlink");
+/// let dest = Quoted::new("http://www.lizardtech.com/");
+/// let comment = Quoted::new("Here is a rectangular hyperlink");
 /// let shape = Shape::Rect {
 ///     origin: Point { x: 543, y: 2859 },
 ///     width: 408,
@@ -351,12 +364,12 @@ impl Display for Shape {
 ///     border_always_visible: false,
 ///     highlight: None,
 /// };
-/// let annot = Maparea {
+/// let annot: Annot = Maparea {
 ///     link: Link { dest, target: None },
 ///     comment,
 ///     shape,
 ///     border: Border::Xor,
-/// };
+/// }.into();
 /// assert_eq!(
 ///     annot.to_string(),
 ///     "(maparea \
@@ -371,13 +384,6 @@ pub struct Maparea {
     pub comment: Quoted,
     pub shape: Shape,
     pub border: Border,
-}
-
-impl Display for Maparea {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let Self { ref link, ref comment, ref shape, border } = *self;
-        write!(f, "(maparea {link} {comment} {shape} {})", Displayable(border))
-    }
 }
 
 /// A single annotation.
@@ -434,9 +440,11 @@ impl Display for Annot {
             Self::Zoom(zoom) => write!(f, "(zoom {zoom})"),
             Self::Mode(mode) => write!(f, "(mode {mode})"),
             Self::Align { horiz, vert } => write!(f, "(align {horiz} {vert})"),
-            Self::Maparea(ref maparea) => write!(f, "{maparea}"),
-            Self::Phead(ref strings) => write!(f, "(phead {})", Displayable(strings)),
-            Self::Pfoot(ref strings) => write!(f, "(pfoot {})", Displayable(strings)),
+            Self::Maparea(Maparea { ref link, ref comment, ref shape, border }) => {
+                write!(f, "(maparea {link} {comment} {shape} {border})")
+            }
+            Self::Phead(ref strings) => write!(f, "(phead {})", Di(strings)),
+            Self::Pfoot(ref strings) => write!(f, "(pfoot {})", Di(strings)),
             Self::Metadata(ref pairs) => {
                 write!(f, "(metadata")?;
                 for &(ref key, ref val) in pairs {

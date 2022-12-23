@@ -143,7 +143,7 @@ pub struct RawInfo<'a> {
 }
 
 impl<'a> RawInfo<'a> {
-    pub fn parse(&self) -> Result<Info, Error> {
+    pub fn parse(&self) -> Result<(Info, &'a [u8]), Error> {
         let mut s = self.content.split();
         let width = s.u16_be()?;
         let height = s.u16_be()?;
@@ -158,17 +158,19 @@ impl<'a> RawInfo<'a> {
             5 => PageRotation::Cw,
             _ => PageRotation::Up, // see djvuchanges.txt
         };
-        Ok(Info {
+        let extra = s.remaining();
+        Ok((Info {
             width,
             height,
             version: InfoVersion { major, minor },
             dpi,
             gamma,
             rotation,
-        })
+        }, extra))
     }
 }
 
+#[derive(Debug)]
 pub struct Info {
     pub width: u16,
     pub height: u16,
@@ -223,9 +225,15 @@ impl<'a> Element<'a> {
 }
 
 pub struct RawAnta<'a> {
-    _content: StringField<'a>,
+    content: StringField<'a>,
     after_pos: Pos,
     end_pos: Pos,
+}
+
+impl<'a> RawAnta<'a> {
+    pub fn bytes(&self) -> &'a [u8] {
+        self.content.0.bytes()
+    }
 }
 
 pub struct RawAntz<'a> {
@@ -240,12 +248,18 @@ impl<'a> RawAntz<'a> {
     }
 
     pub fn decoded<'dec>(&self, decoded: &'dec [u8]) -> DecodedAntz<'dec> {
-        DecodedAntz { _content: StringField(self.content.decoded(decoded)) }
+        DecodedAntz { content: StringField(self.content.decoded(decoded)) }
     }
 }
 
 pub struct DecodedAntz<'a> {
-    _content: StringField<'a>,
+    content: StringField<'a>,
+}
+
+impl<'a> DecodedAntz<'a> {
+    pub fn bytes(&self) -> &'a [u8] {
+        self.content.0.bytes()
+    }
 }
 
 pub struct RawTxta<'a> {
@@ -923,7 +937,7 @@ impl ElementP {
         let after_pos = s.pos();
         let end_pos = self.end_pos;
         let element = match &kind {
-            b"ANTa" => Element::Anta(RawAnta { _content: StringField(content), after_pos, end_pos }),
+            b"ANTa" => Element::Anta(RawAnta { content: StringField(content), after_pos, end_pos }),
             b"ANTz" => Element::Antz(RawAntz { content, after_pos, end_pos }),
             b"TXTa" => Element::Txta(RawTxta { content, after_pos, end_pos }),
             b"TXTz" => Element::Txtz(RawTxtz { content, after_pos, end_pos }),
@@ -947,6 +961,7 @@ impl ElementP {
 }
 
 /// Pointer-like immutable cursor to the start or end of a component.
+#[derive(Debug)]
 pub struct ComponentP {
     pos: Pos,
     end_pos: Pos,
@@ -1046,11 +1061,10 @@ impl<'a> SplitOuter<'a> {
     }
 
     fn remaining(&self) -> &'a [u8] {
-        let end = if let Some(pos) = self.end_pos {
-            (pos - self.start_pos) as usize
-        } else {
-            self.full.len()
-        };
+        let mut end = self.full.len();
+        if let Some(pos) = self.end_pos {
+            end = end.min((pos - self.start_pos) as usize);
+        }
         &self.full[self.by as usize..end]
     }
 
