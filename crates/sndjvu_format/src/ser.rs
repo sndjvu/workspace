@@ -16,7 +16,7 @@ use core::fmt::{Debug, Display, Formatter};
 use core::mem::replace;
 use alloc::string::String;
 use alloc::vec::Vec;
-#[cfg(sndjvu_backtrace)]
+#[cfg(feature = "backtrace")]
 use std::backtrace::Backtrace;
 
 const CHUNK_HEADER_SIZE: u32 = 8;
@@ -50,7 +50,7 @@ enum ErrorKind {
 #[derive(Debug)]
 pub struct Error {
     kind: ErrorKind,
-    #[cfg(sndjvu_backtrace)]
+    #[cfg(feature = "backtrace")]
     backtrace: Backtrace,
     _mutable: PhantomMutable,
 }
@@ -62,7 +62,7 @@ impl Display for Error {
             #[cfg(feature = "std")]
             ErrorKind::Io(ref e) => write!(f, "{e}")?,
         }
-        #[cfg(sndjvu_backtrace)] {
+        #[cfg(feature = "backtrace")] {
             write!(f, "\n\n{}", self.backtrace)?;
         }
         Ok(())
@@ -77,7 +77,7 @@ impl Error {
     fn io(e: std::io::Error) -> Self {
         Self {
             kind: ErrorKind::Io(e),
-            #[cfg(sndjvu_backtrace)]
+            #[cfg(feature = "backtrace")]
             backtrace: Backtrace::capture(),
             _mutable: PhantomMutable,
         }
@@ -88,7 +88,7 @@ impl From<OverflowError> for Error {
     fn from(_: OverflowError) -> Self {
         Self {
             kind: ErrorKind::Overflow,
-            #[cfg(sndjvu_backtrace)]
+            #[cfg(feature = "backtrace")]
             backtrace: Backtrace::capture(),
             _mutable: PhantomMutable,
         }

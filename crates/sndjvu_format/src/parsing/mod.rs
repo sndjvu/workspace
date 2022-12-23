@@ -8,7 +8,7 @@ use crate::{
 use core::fmt::{Debug, Display, Formatter};
 use core::num::NonZeroU8;
 use alloc::vec::Vec;
-#[cfg(sndjvu_backtrace)]
+#[cfg(feature = "backtrace")]
 use std::backtrace::Backtrace;
 
 /// The outcome of a parsing operation, if no [`Error`] was encountered.
@@ -57,7 +57,7 @@ macro_rules! try_advance {
 
 #[derive(Debug)]
 pub struct Error {
-    #[cfg(sndjvu_backtrace)]
+    #[cfg(feature = "backtrace")]
     backtrace: Backtrace,
     _mutable: PhantomMutable,
 }
@@ -65,7 +65,7 @@ pub struct Error {
 impl Error {
     fn placeholder() -> Self {
         Self {
-            #[cfg(sndjvu_backtrace)]
+            #[cfg(feature = "backtrace")]
             backtrace: Backtrace::capture(),
             _mutable: PhantomMutable,
         }
@@ -75,7 +75,7 @@ impl Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "parsing failed")?;
-        #[cfg(sndjvu_backtrace)] {
+        #[cfg(feature = "backtrace")] {
             write!(f, "\n\n{}", self.backtrace)?;
         }
         Ok(())
