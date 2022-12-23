@@ -3,7 +3,7 @@
 use crate::{
     Bstr, PaletteIndex, PhantomMutable, PageRotation, InfoVersion,
     TxtVersion, Zone, Iw44ColorSpace, Iw44Version, FgbzVersion,
-    PaletteEntry, DirmVersion, ComponentKind,
+    PaletteEntry, DirmVersion, ComponentKind, Never,
 };
 use core::fmt::{Debug, Display, Formatter};
 use core::num::NonZeroU8;
@@ -12,7 +12,7 @@ use alloc::vec::Vec;
 use std::backtrace::Backtrace;
 
 /// The outcome of a parsing operation, if no [`Error`] was encountered.
-pub enum Progress<T, D = Void> {
+pub enum Progress<T, N = Never> {
     /// Not enough data was presented to complete the parsing operation.
     None {
         /// Significance to be determined.
@@ -28,16 +28,10 @@ pub enum Progress<T, D = Void> {
         by: usize,
     },
     /// Nothing remains to be parsed.
-    ///
-    /// Note that if `D` is uninhabited (see [`Void`]) than this variant is impossible to construct, and can
-    /// essentially be ignored when matching.
-    End(D),
+    End(N),
 }
 
-/// Uninhabited type, used to punch a hole in [`Progress`].
-pub enum Void {}
-
-fn advanced<T, D>(head: T, s: &SplitOuter<'_>) -> Progress<T, D> {
+fn advanced<T, N>(head: T, s: &SplitOuter<'_>) -> Progress<T, N> {
     Progress::Advanced { head, by: s.by as usize }
 }
 

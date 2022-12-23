@@ -362,6 +362,8 @@ type PhantomMutable = PhantomData<dyn core::any::Any + Send + Sync + core::marke
 #[allow(non_upper_case_globals)]
 const PhantomMutable: PhantomMutable = PhantomData;
 
+pub enum Never {}
+
 pub mod annot;
 pub mod parsing;
 pub mod ser;
