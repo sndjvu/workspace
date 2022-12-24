@@ -62,9 +62,6 @@ impl Display for Error {
             #[cfg(feature = "std")]
             ErrorKind::Io(ref e) => write!(f, "{e}")?,
         }
-        #[cfg(feature = "backtrace")] {
-            write!(f, "\n\n{}", self.backtrace)?;
-        }
         Ok(())
     }
 }
