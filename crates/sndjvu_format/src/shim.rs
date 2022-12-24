@@ -27,7 +27,7 @@ pub fn slice_as_arrays<const N: usize, T>(slice: &[T]) -> (&[[T; N]], &[T]) {
 
 pub fn arrays_as_slice<const N: usize, T>(arrays: &[[T; N]]) -> &[T] {
     let len = arrays.len() * N;
-    // SAFETY arrays points to the appropriate number of T (arrays don't affect layout)
+    // SAFETY `arrays` points to the appropriate number of T (arrays don't affect layout)
     unsafe {
         core::slice::from_raw_parts(
             arrays.as_ptr().cast(),

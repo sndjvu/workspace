@@ -20,10 +20,12 @@ extern crate std;
 use core::fmt::{Debug, Display, Formatter};
 use core::marker::PhantomData;
 
-#[derive(Clone, Copy, Debug)]
+/// Version information associated with the `TXTa` and `TXTz` chunks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TxtVersion(pub u8);
 
 impl TxtVersion {
+    /// The current version, according to the most recent DjVu spec.
     pub const CURRENT: Self = Self(1);
 
     fn pack(self) -> [u8; 1] {
@@ -37,13 +39,15 @@ impl Display for TxtVersion {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// Version information associated with the `BG44`, `FG44`, and `TH44` chunks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Iw44Version {
     major: u8,
     minor: u8,
 }
 
 impl Iw44Version {
+    /// The current version, according to the most recent DjVu spec.
     pub const CURRENT: Self = Self { major: 1, minor: 2 };
 
     fn pack(self, color_space: Iw44ColorSpace) -> [u8; 2] {
@@ -57,10 +61,12 @@ impl Display for Iw44Version {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// Version information associated with the `FGbz` chunk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FgbzVersion(u8);
 
 impl FgbzVersion {
+    /// The current version, according to the most recent DjVu spec.
     pub const CURRENT: Self = Self(0);
 
     fn pack(self, has_indices: bool) -> [u8; 1] {
@@ -74,13 +80,17 @@ impl Display for FgbzVersion {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// Version information associated with the `INFO` chunk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct InfoVersion {
+    /// The major version.
     pub major: u8,
+    /// The minor version.
     pub minor: u8,
 }
 
 impl InfoVersion {
+    /// The current version, according to the most recent DjVu spec.
     pub const CURRENT: Self = Self { major: 0, minor: 26 };
 
     fn pack(self) -> [u8; 2] {
@@ -94,7 +104,8 @@ impl Display for InfoVersion {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// The orientation of an encoded page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PageRotation {
     Up = 1,
     Ccw = 6,
@@ -102,10 +113,12 @@ pub enum PageRotation {
     Cw = 5,
 }
 
-#[derive(Clone, Copy, Debug)]
+/// Version information associated with the `DIRM` chunk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DirmVersion(u8);
 
 impl DirmVersion {
+    /// The current version, according to the most recent DjVu spec.
     pub const CURRENT: Self = Self(1);
 
     fn pack(self, is_bundled: bool) -> [u8; 1] {
@@ -119,10 +132,14 @@ impl Display for DirmVersion {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// The type of a component in a multi-page DjVu document.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ComponentKind {
+    /// `DJVI` component (elements shared between pages).
     Djvi,
+    /// `DJVU` component (a page).
     Djvu,
+    /// `THUM` component (page thumbnails).
     Thum,
 }
 
@@ -136,7 +153,8 @@ impl ComponentKind {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// The type of a zone record in a `TXTa` or `TXTz` chunk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ZoneKind {
     Page = 1,
@@ -148,7 +166,8 @@ pub enum ZoneKind {
     Character,
 }
 
-#[derive(Clone, Copy, Debug)]
+/// Color space of the image data in a `BG44`, `FG44`, or `TH44` chunk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Iw44ColorSpace {
     YCbCr,
     Gray,
@@ -225,6 +244,7 @@ impl<B: AsRef<[u8]>> Debug for Bstr<B> {
     }
 }
 
+/// Index into the color palette of an `FGbz` chunk.
 #[derive(Clone, Copy, Debug)]
 #[repr(transparent)]
 pub struct PaletteIndex([u8; 2]);
@@ -245,7 +265,8 @@ impl PaletteIndex {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+/// A BGR8 color from the palette of an `FGbz` chunk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct PaletteEntry {
     pub b: u8,
@@ -275,6 +296,7 @@ impl PaletteEntry {
     }
 }
 
+/// Zone record from a `TXTa` or `TXTz` chunk.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Zone {
@@ -362,6 +384,10 @@ type PhantomMutable = PhantomData<dyn core::any::Any + Send + Sync + core::marke
 #[allow(non_upper_case_globals)]
 const PhantomMutable: PhantomMutable = PhantomData;
 
+/// Uninhabited type, used to customize the [`Progress`](parsing::Progress) type.
+///
+/// This will eventually become a simple alias for [the canonical never
+/// type](never).
 pub enum Never {}
 
 pub mod annot;

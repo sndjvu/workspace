@@ -688,7 +688,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         iw44: &[u8],
     ) -> Result<(), Error> {
         if initial_cdc > 0x7f {
-            panic!() // XXX
+            return Err(OverflowError.into());
         }
         self.stage.start_chunk(b"FG44")?;
         out!(
@@ -818,7 +818,7 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
         iw44: &[u8],
     ) -> Result<(), Error> {
         if initial_cdc > 0x7f {
-            panic!() // XXX
+            return Err(OverflowError.into());
         }
         self.stage.start_chunk(b"TH44")?;
         let version = Iw44Version::CURRENT;
@@ -837,6 +837,8 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
 }
 
 /// Serialize a document and write the serialized data to the given sink.
+///
+/// It's a good idea to use a buffered writer here.
 #[cfg(feature = "std")]
 pub fn to_writer<T: Serialize, W: std::io::Write>(doc: &T, mut writer: W) -> Result<(), Error> {
     let serializer = Serializer::first_stage();

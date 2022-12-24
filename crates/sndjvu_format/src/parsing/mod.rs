@@ -28,6 +28,8 @@ pub enum Progress<T, N = Never> {
         by: usize,
     },
     /// Nothing remains to be parsed.
+    ///
+    /// If `N` is uninhabited (see [`Never`]), this variant cannot be constructed.
     End(N),
 }
 
@@ -49,6 +51,10 @@ macro_rules! try_advance {
     };
 }
 
+/// An error encountered while parsing.
+///
+/// Implements [`std::error::Error`] if the `std` crate feature is enabled. Contains a backtrace if
+/// the `backtrace` crate feature is enabled.
 #[derive(Debug)]
 pub struct Error {
     #[cfg(feature = "backtrace")]
@@ -79,6 +85,7 @@ impl Display for Error {
 #[cfg(feature = "std")]
 impl std::error::Error for Error {}
 
+/// Start parsing a DjVu document from some bytes.
 pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
     let mut s = split_outer(data, 0, None); // don't know end_pos yet
     let s = &mut s;
@@ -109,6 +116,7 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
     Ok(advanced(head, s))
 }
 
+/// Start parsing a component of an indirect multi-page DjVu document from some bytes.
 pub fn indirect_component(data: &[u8]) -> Result<Progress<ComponentHead<'_>>, Error> {
     let mut s = split_outer(data, 0, None);
     let s = &mut s;
@@ -131,12 +139,16 @@ pub enum DocumentHead<'a> {
     },
 }
 
+/// Unparsed representation of the `INFO` chunk.
 #[derive(Clone, Debug)]
 pub struct RawInfo<'a> {
     content: Field<'a>,
 }
 
 impl<'a> RawInfo<'a> {
+    /// Attempt to parse the `INFO` chunk.
+    ///
+    /// Any extra data in the chunk is returned in the second field of the tuple.
     pub fn parse(&self) -> Result<(Info, &'a [u8]), Error> {
         let mut s = self.content.split();
         let width = s.u16_be()?;
@@ -164,6 +176,7 @@ impl<'a> RawInfo<'a> {
     }
 }
 
+/// Parsed representation of the `INFO` chunk.
 #[derive(Debug)]
 pub struct Info {
     pub width: u16,
@@ -197,6 +210,10 @@ pub enum Element<'a> {
 }
 
 impl<'a> Element<'a> {
+    /// Get a pointer to the element after this one, if it exists.
+    ///
+    /// If this is the last element, the returned pointer will be "one-past-the-end" and calling
+    /// [`ElementP::feed`] will return `Ok(Progress::End(()))`.
     pub fn after(&self) -> ElementP {
         match *self {
             Self::Anta(RawAnta { after_pos, end_pos, .. })
@@ -218,6 +235,7 @@ impl<'a> Element<'a> {
     }
 }
 
+/// Unparsed representation of the `ANTa` chunk.
 pub struct RawAnta<'a> {
     content: StringField<'a>,
     after_pos: Pos,
@@ -256,6 +274,7 @@ impl<'a> DecodedAntz<'a> {
     }
 }
 
+/// Unparsed representation of the `TXTa` chunk.
 pub struct RawTxta<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -284,6 +303,7 @@ impl<'a> RawTxtz<'a> {
     }
 }
 
+/// Parsed representation of the `TXTa` and `TXTz` chunks.
 pub struct Txt<'a> {
     pub text: &'a [u8],
     pub version: TxtVersion,
@@ -469,6 +489,7 @@ impl<'a> FgbzIndices<'a> {
     }
 }
 
+/// Represents the `INCL` chunk, which doesn't need parsing.
 pub struct RawIncl<'a> {
     content: StringField<'a>,
     after_pos: Pos,
@@ -476,7 +497,7 @@ pub struct RawIncl<'a> {
 }
 
 impl<'a> RawIncl<'a> {
-    pub fn target_id(&self) -> &'a [u8] {
+    pub fn bytes(&self) -> &'a [u8] {
         self.content.0.bytes()
     }
 }
@@ -505,6 +526,7 @@ impl<'a> RawFgjp<'a> {
     }
 }
 
+/// Unparsed representation of the `Smmr` chunk.
 pub struct RawSmmr<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -541,6 +563,7 @@ impl<'a> RawSmmr<'a> {
     }
 }
 
+/// Parsed representation of the `Smmr` chunk.
 pub struct Smmr<'a> {
     pub is_reverse_video: bool,
     pub width: u16,
@@ -882,6 +905,7 @@ pub enum ComponentHead<'a> {
     },
 }
 
+/// Unparsed representation of the `Smmr` chunk.
 pub struct RawTh44<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -1256,8 +1280,20 @@ impl<'a> SplitInner<'a> {
         }
     }
 
-    fn field(&mut self, _n: usize) -> Result<Field<'a>, Error> {
-        todo!()
+    fn field(&mut self, n: usize) -> Result<Field<'a>, Error> {
+        if self.remaining().get(..n).is_some() {
+            let field = Field {
+                full: self.parent.full,
+                start: self.parent.start + self.by as usize,
+                start_pos: self.parent.start_pos + self.by,
+                end: self.parent.end + self.by as usize + n,
+                bzz: self.parent.bzz,
+            };
+            self.by += n as u32; // XXX
+            Ok(field)
+        } else {
+            Err(Error::placeholder())
+        }
     }
 
     fn slice(&mut self, n: usize) -> Result<&'a [u8], Error> {
