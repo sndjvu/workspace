@@ -5,7 +5,17 @@ use alloc::vec::Vec;
 
 struct Di<T>(T);
 
+#[derive(Debug)]
 pub struct InvalidKeyError;
+
+impl Display for InvalidKeyError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "invalid key")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for InvalidKeyError {}
 
 #[derive(Clone, Debug)]
 pub struct Key(Arc<str>);
