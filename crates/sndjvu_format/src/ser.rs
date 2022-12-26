@@ -51,7 +51,7 @@ enum ErrorKind {
 pub struct Error {
     kind: ErrorKind,
     #[cfg(feature = "backtrace")]
-    backtrace: Backtrace,
+    _backtrace: Backtrace,
     _mutable: PhantomMutable,
 }
 
@@ -75,7 +75,7 @@ impl Error {
         Self {
             kind: ErrorKind::Io(e),
             #[cfg(feature = "backtrace")]
-            backtrace: Backtrace::capture(),
+            _backtrace: Backtrace::capture(),
             _mutable: PhantomMutable,
         }
     }
@@ -86,7 +86,7 @@ impl From<OverflowError> for Error {
         Self {
             kind: ErrorKind::Overflow,
             #[cfg(feature = "backtrace")]
-            backtrace: Backtrace::capture(),
+            _backtrace: Backtrace::capture(),
             _mutable: PhantomMutable,
         }
     }

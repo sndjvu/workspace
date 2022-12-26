@@ -90,7 +90,7 @@ macro_rules! try_advance {
 #[derive(Debug)]
 pub struct Error {
     #[cfg(feature = "backtrace")]
-    backtrace: Backtrace,
+    _backtrace: Backtrace,
     _mutable: PhantomMutable,
 }
 
@@ -98,7 +98,7 @@ impl Error {
     fn placeholder() -> Self {
         Self {
             #[cfg(feature = "backtrace")]
-            backtrace: Backtrace::capture(),
+            _backtrace: Backtrace::capture(),
             _mutable: PhantomMutable,
         }
     }
