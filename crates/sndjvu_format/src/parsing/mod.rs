@@ -104,8 +104,8 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
             } else {
                 None
             };
-            DocumentHead::MultiPage { dirm, navm }
-
+            let components = ComponentP::new(s.pos(), end_pos);
+            DocumentHead::MultiPage { dirm, navm, components }
         }
         _ => return Err(Error::placeholder()),
     };
@@ -123,7 +123,7 @@ pub fn indirect_component(data: &[u8]) -> Result<Progress<ComponentHead<'_>>, Er
 
 
 /// Parsed representation of the start of a document.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum DocumentHead<'a> {
     SinglePage {
         info: RawInfo<'a>,
@@ -132,6 +132,7 @@ pub enum DocumentHead<'a> {
     MultiPage {
         dirm: RawDirm<'a>,
         navm: Option<RawNavm<'a>>,
+        components: ComponentP,
     },
 }
 
