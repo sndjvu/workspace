@@ -24,7 +24,7 @@ const COMPONENT_HEADER_SIZE: u32 = 12;
 
 /// Trivial error type for checked arithmetic.
 #[derive(Debug)]
-pub struct OverflowError;
+struct OverflowError;
 
 impl Display for OverflowError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -712,7 +712,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         iw44: &[u8],
     ) -> Result<SerializeBg44Chunks<'_, 'wr>, Error> {
         if initial_cdc > 0x7f {
-            panic!() // XXX
+            return Err(OverflowError.into());
         }
         self.stage.start_chunk(b"BG44")?;
         out!(
@@ -959,7 +959,7 @@ impl TxtBuf {
         width: i16,
         height: i16,
         text_len: usize,
-    ) -> Result<(), OverflowError> {
+    ) -> Result<(), Error> {
         let text_len: U24 = text_len.try_into()?;
         if let Some(&mut (_, ref mut count)) = self.stack.last_mut() {
             count.inc()?;
@@ -1015,7 +1015,7 @@ impl ZoneBuf {
         width: i16,
         height: i16,
         text_len: usize,
-    ) -> Result<(), OverflowError> {
+    ) -> Result<(), Error> {
         let text_len = text_len.try_into()?;
         if let Some(&mut (_, ref mut n)) = self.stack.last_mut() {
             n.inc()?;
@@ -1060,7 +1060,7 @@ impl BookmarkBuf {
         Self { raw: alloc::vec![0, 0], count: 0, stack: Vec::new() }
     }
 
-    pub fn start_bookmark(&mut self, description: &str, url: &str) -> Result<(), OverflowError> {
+    pub fn start_bookmark(&mut self, description: &str, url: &str) -> Result<(), Error> {
         let description_len: U24 = description.len().try_into()?;
         let url_len: U24 = url.len().try_into()?;
         self.count = self.count.checked_add(1).ok_or(OverflowError)?;
