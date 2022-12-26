@@ -1,3 +1,5 @@
+//! Representation of document annotations from the `ANTa` and `ANTz` chunks.
+
 use core::fmt::{Display, Formatter};
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -5,6 +7,9 @@ use alloc::vec::Vec;
 
 struct Di<T>(T);
 
+/// The error when attempting to construct a [`Key`] that contains invalid characters.
+///
+/// Implements [`std::error::Error`] if the `std` crate feature is enabled.
 #[derive(Debug)]
 pub struct InvalidKeyError;
 
@@ -17,10 +22,15 @@ impl Display for InvalidKeyError {
 #[cfg(feature = "std")]
 impl std::error::Error for InvalidKeyError {}
 
+/// A string key occurring in the `metadata` annotation.
 #[derive(Clone, Debug)]
 pub struct Key(Arc<str>);
 
 impl Key {
+    /// Construct a new key.
+    ///
+    /// The string is restricted to ASCII alphanumeric characters, and must begin with an ASCII
+    /// alphabetic character.
     pub fn new(s: &str) -> Result<Self, InvalidKeyError> {
         if s.chars().nth(0).map_or(false, |c| c.is_ascii_alphabetic()) &&
             s.chars().all(|c| c.is_ascii_alphanumeric()) {
@@ -37,6 +47,7 @@ impl Display for Key {
     }
 }
 
+/// A quoted string occurring in an annotation.
 #[derive(Clone, Debug)]
 pub struct Quoted {
     // data is stored in *escaped* repr, without surrounding quotes
@@ -44,6 +55,7 @@ pub struct Quoted {
 }
 
 impl Quoted {
+    /// Construct a new quoted string.
     pub fn new(s: &str) -> Self {
         use core::fmt::Write;
 
@@ -73,6 +85,7 @@ impl Display for Quoted {
     }
 }
 
+/// Arguments to the (deprecated) `phead` and `pfoot` annotations.
 #[derive(Clone, Debug, Default)]
 pub struct MarginStrings {
     pub left: Option<Quoted>,
@@ -230,6 +243,7 @@ impl Display for Di<Point> {
     }
 }
 
+/// Highlighting of a `rect` in the [`maparea`](Maparea) annotation.
 #[derive(Clone, Copy, Debug)]
 pub struct Highlight {
     pub color: Color,
@@ -275,6 +289,7 @@ impl Display for Border {
     }
 }
 
+/// Shape and "effect" data associated with a [`maparea`](Maparea) annotation.
 #[derive(Clone, Debug)]
 pub enum Shape {
     Rect {
@@ -419,7 +434,9 @@ pub enum Annot {
     Mode(Mode),
     Align { horiz: HorizAlign, vert: VertAlign },
     Maparea(Maparea),
+    /// The `phead` annotation should not be used in new DjVu documents.
     Phead(MarginStrings),
+    /// The `pfoot` annotation should not be used in new DjVu documents.
     Pfoot(MarginStrings),
     Metadata(Vec<(Key, Quoted)>),
     Xmp(Quoted),

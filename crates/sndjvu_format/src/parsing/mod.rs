@@ -1,4 +1,36 @@
 //! Low-level parser for the DjVu transfer format.
+//!
+//! "Low-level" means that only the grittiest details of the file format are abstracted away,
+//! and that flexibility is prioritized over convenience in the design of the interface.
+//! Callers only need to load a relatively small amount of data into memory to begin parsing, and
+//! can choose exactly which parts of the document they want to parse.
+//!
+//! Entry points are the [`document`] and [`indirect_component`] free functions; other key items
+//! are [`Progress`] and the pointer-like types [`ComponentP`], [`ElementP`].
+//!
+//! ## Incremental parsing
+//!
+//! A DjVu document in the transfer format is a sequence of bytes. A major design goal of this
+//! module is that you can parse parts of a document without having all the bytes in memory at any
+//! one time. The parser keeps track of a correspondence between positions in an abstract byte
+//! stream and features of the document structure, and the caller provides a chunk of bytes from
+//! a specific position when it wants to parse the corresponding feature. The functions that work
+//! this way are:
+//!
+//! - [`document`]
+//! - [`indirect_component`]
+//! - [`ComponentP::feed`]
+//! - [`ElementP::feed`]
+//!
+//! The return type of each of these looks like `Result<Progress<T, N>, Error>`, which is how we
+//! represent the alternation of these outcomes:
+//!
+//! - some part of the provided data was invalid (`Result::Err`)
+//! - not enough bytes were provided to parse the requested document feature
+//!   (`Result::Ok(Progress::None)`)
+//! - parsing succeeded (`Result::Ok(Progress::Advanced)`)
+//! - there is no feature to parse at this position (`Result::Ok(Progress::End)`)---this is a
+//!   possible outcome only for [`ComponentP::feed`] and [`ElementP::feed`]
 
 use crate::{
     Bstr, PaletteIndex, PhantomMutable, PageRotation, InfoVersion,

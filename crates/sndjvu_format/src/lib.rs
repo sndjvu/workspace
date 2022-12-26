@@ -1,3 +1,22 @@
+//! sndjvu_format is a library for working with the transfer format for DjVu documents.
+//!
+//! ## Vocabulary
+//!
+//! A DjVu document may be **single-page** or **multi-page**.
+//!
+//! A single-page document consists of a single **component** of type `DJVU`, called a **page**.
+//!
+//! A multi-page document consists of some header data and zero or more **components**, each of
+//! type `DJVU`, `DJVI`, or `THUM`.
+//!
+//! A `DJVU` component (page) consists of some header data and zero or more **elements**.
+//!
+//! A `DJVI` component consists of zero or more **elements**.
+//!
+//! A `THUM` component consists of zero or more `TH44` **chunks**.
+//!
+//! An element is a **chunk** containing data that represents part of a page.
+
 #![no_std]
 #![allow(
     clippy::needless_lifetimes,
