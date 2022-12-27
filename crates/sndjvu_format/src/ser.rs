@@ -1,8 +1,34 @@
-//! Flexible serialization to the DjVu transfer format.
+//! Serialization to the DjVu transfer format.
 //!
-//! The items in this module allow you to generate a well-formed DjVu document in the standard
-//! transfer format from an in-memory data structure. As with other parts of sndjvu_format, we
-//! try to be maximally flexible and accomodate all kinds of in-memory representations.
+//! If you have a Rust data type that represents a DjVu document, implementing this module's
+//! [`Serialize`] trait allows to you turn a value of that type into a blob of bytes in the
+//! transfer format. The structure of the document is expressed by a sequence of method calls on
+//! various "serializer" objects, such as [`Serializer`], [`SerializeMultiPageBundled`], etc. This
+//! approach should be familiar from APIs like `std::fmt::Debug` and `serde::Serialize`.
+//!
+//! ## Two-pass approach
+//!
+//! The DjVu transfer format makes extensive use of length-prefixed fields. Because DjVu documents
+//! have tree structure, this creates a chicken/egg problem for serialization: we want to emit the
+//! bytes of the serialized document in order, but we don't know what value to use for (e.g.) the
+//! length field in the document header until the entire structure of the document has been
+//! described.
+//!
+//! In fact, it's even worse than this: some length metatada is stored in the *compressed* portion
+//! of the `DIRM` header chunk. Since the length of the compressed data is unpredictable until we
+//! know exactly what data will be compressed, it's not possible to simply write junk to these
+//! fields and fix them up later in serialization (which approach does work for length fields that
+//! are stored plain).
+//!
+//! The solution is to split serialization into two passes. On the first pass, we don't emit any
+//! bytes, but only collect enough information to compute the value of every length field. On the
+//! second pass, we use that stored information to emit the bytes of the document, in order, with
+//! their correct values.
+//!
+//! The trick that this module pulls off is to *encapsulate* the two-pass nature of serialization.
+//! You just implement [`Serialize`], and a function like [`to_vec`] takes care internally of
+//! calling [`Serialize::serialize`] twice, with two different [`Serializer`]s, one for the first
+//! pass and one for the second.
 
 #![deny(clippy::integer_arithmetic)]
 
@@ -44,9 +70,7 @@ enum ErrorKind {
 
 /// An error encountered during serialization.
 ///
-/// Currently, all errors arise either from I/O or from arithmetic overflow when computing values
-/// for various length fields in the transfer format. Additional sources of errors may be added in
-/// the future.
+/// Contains a backtrace if the `backtrace` crate feature is enabled.
 #[derive(Debug)]
 pub struct Error {
     kind: ErrorKind,
@@ -391,6 +415,10 @@ enum SerializerRepr<'wr> {
 }
 
 /// The starting point for serialization.
+///
+/// An implementation of [`Serialize::serialize`] should call one of the methods of this type to
+/// select what kind of document is being serialized. Currently, only the bundled multi-page
+/// document format is supported.
 pub struct Serializer<'wr> {
     repr: SerializerRepr<'wr>,
 }
@@ -445,10 +473,15 @@ impl<'wr> Serializer<'wr> {
 
 /// Serializer for a bundled multi-page document.
 ///
-/// This type has two variants because DjVu serialization is fundamentally a two-pass operation.
+/// The two variants of this type expose the two-pass nature of the serialization process. On the
+/// first pass, an implementation of [`Serialize::serialize`] will be presented with the
+/// `Components` variant and proceed directly to describing the components of the document. On the
+/// second pass, after enough information has been gathered to compute the contents of the `DIRM`
+/// chunk, the implementation is presented with the `Head` variant and must compress (a portion of)
+/// the `DIRM` data and pass it back to the serializer.
 pub enum SerializeMultiPageBundled<'wr> {
-    Head(SerializeMultiPageHead<'wr>),
     Components(SerializeComponents<'wr>),
+    Head(SerializeMultiPageHead<'wr>),
 }
 
 /// Serializer for the "head" data of a multi-page document (`DIRM` and `NAVM` chunks).
@@ -464,12 +497,16 @@ impl<'wr> SerializeMultiPageHead<'wr> {
     /// Access raw data for BZZ compression.
     ///
     /// The returned bytes should be compressed using a BZZ implementation, and the compressed data
-    /// passed as the first argument to [`SerializeMultiPageHead::dirm_and_navm`].
+    /// passed as the first argument to [`SerializeMultiPageHead::dirm_and_navm`] to continue
+    /// serialization.
     pub fn for_compression(&self) -> &[u8] {
         &self.dirm_data
     }
 
-    // FIXME name
+    /// Provide compressed `DIRM` and `NAVM` data to continue with serialization.
+    ///
+    /// Create the `NAVM` data by building up a [`BookmarkBuf`] and passing the output of
+    /// [`BookmarkBuf::as_bytes`] to a BZZ compressor.
     pub fn dirm_and_navm(self, compressed: &[u8], navm: Option<&[u8]>) -> Result<SerializeComponents<'wr>, Error> {
         // accumulate offsets
         let mut off: u32 = tame!(4 + COMPONENT_HEADER_SIZE); // AT&T:FORM:$len:DJVM
@@ -623,6 +660,8 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     ///
     /// The DjVu standard notes that "the use of the `ANTa` chunk is discouraged", the compressed
     /// `ANTz` chunk being preferred (see [`Self::antz`]).
+    ///
+    /// See [`AnnotBuf`] for a strongly-typed way to build up data for the `ant` argument.
     pub fn anta(&mut self, ant: &str) -> Result<(), Error> {
         self.pass.start_chunk(b"ANTa")?;
         out!(self.pass; ant.as_bytes())?;
@@ -630,6 +669,9 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     }
 
     /// Serialize an `ANTz` chunk.
+    ///
+    /// See [`AnnotBuf`] for a strongly-typed way to build up data that can be compressed for the
+    /// `bzz` argument.
     pub fn antz(&mut self, bzz: &[u8]) -> Result<(), Error> {
         self.pass.start_chunk(b"ANTz")?;
         out!(self.pass; bzz)?;
@@ -640,6 +682,8 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     ///
     /// The DjVu standard notes that "the use of the `TXTa` chunk is discouraged", the compressed
     /// `TXTz` chunk being preferred (see [`Self::txtz`]).
+    ///
+    /// See [`ZoneBuf`] for a strongly-typed way to build up data for the `zones` argument.
     pub fn txta(&mut self, text: &str, zones: &[Zone]) -> Result<(), Error> {
         let len: U24 = text.len().try_into()?;
         self.pass.start_chunk(b"TXTa")?;
@@ -654,6 +698,9 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     }
 
     /// Serialize a `TXTz` chunk.
+    ///
+    /// See [`TxtBuf`] for a strongly-typed way to build up data that can be compressed for the
+    /// `bzz` argument.
     pub fn txtz(&mut self, bzz: &[u8]) -> Result<(), Error> {
         self.pass.start_chunk(b"TXTz")?;
         out!(self.pass; bzz)?;
@@ -675,6 +722,8 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     }
 
     /// Serialize an `FG44` chunk.
+    ///
+    /// `initial_cdc` must not exceed 127.
     pub fn fg44(
         &mut self,
         num_slices: u8,
@@ -685,7 +734,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         iw44: &[u8],
     ) -> Result<(), Error> {
         if initial_cdc > 0x7f {
-            return Err(OverflowError.into());
+            panic!()
         }
         self.pass.start_chunk(b"FG44")?;
         out!(
@@ -702,6 +751,8 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     }
 
     /// Begin serializing a sequence of `BG44` chunks.
+    ///
+    /// `initial_cdc` must not exceed 127.
     pub fn bg44(
         &mut self,
         num_slices: u8,
@@ -712,7 +763,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         iw44: &[u8],
     ) -> Result<SerializeBg44Chunks<'_, 'wr>, Error> {
         if initial_cdc > 0x7f {
-            return Err(OverflowError.into());
+            panic!()
         }
         self.pass.start_chunk(b"BG44")?;
         out!(
@@ -732,6 +783,10 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     }
 
     /// Serialize an `FGbz` chunk.
+    ///
+    /// If `indices` are provided, the first element of the tuple should be the number of indices,
+    /// and the second element should be the BZZ-compressed indices (pass the output of
+    /// [`crate::PaletteIndex::slice_as_bytes`] to a BZZ compressor).
     pub fn fgbz(&mut self, palette: &[PaletteEntry], indices: Option<(usize, &[u8])>) -> Result<(), Error> {
         let palette_len: U24 = palette.len().try_into()?;
         out!(
@@ -773,9 +828,10 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     }
 
     // TODO Smmr
+    // TODO copy from crate::parsing::Element
 }
 
-/// Serializer for a sequence of `BG44` chunks within a page.
+/// Serializer for a sequence of `BG44` chunks within a `DJVI` or `DJVU` component.
 pub struct SerializeBg44Chunks<'el, 'wr: 'el> {
     serial: u8,
     pass: &'el mut Pass<'wr>,
@@ -835,7 +891,7 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
 
 /// Serialize a document and write the serialized data to the given sink.
 ///
-/// It's a good idea to use a buffered writer here.
+/// The serializer makes many small writes, so make sure that `writer` is buffered.
 #[cfg(feature = "std")]
 pub fn to_writer<T: Serialize, W: std::io::Write>(doc: &T, mut writer: W) -> Result<(), Error> {
     let serializer = Serializer::first_pass();
@@ -886,12 +942,17 @@ impl TryFrom<usize> for U24 {
     }
 }
 
-/// Builder interface for the (uncompressed) data in an `ANTa` or `ANTz` chunk.
+/// Builder for the (uncompressed) data in an `ANTa` or `ANTz` chunk.
 pub struct AnnotBuf {
     raw: String,
 }
 
 impl AnnotBuf {
+    pub fn new() -> Self {
+        Self { raw: String::new() }
+    }
+
+    /// Add an annotation.
     pub fn add(&mut self, annot: &Annot) {
         use core::fmt::Write;
         if self.raw.is_empty() {
@@ -933,6 +994,10 @@ impl Zone {
     }
 }
 
+/// Builder for the (uncompressed) data in a `TXTz` chunk.
+///
+/// Calls to [`Self::start_zone`] and [`Self::end_zone`] must be balanced, and their nesting
+/// determines the tree structure of the zones in the natural way.
 pub struct TxtBuf {
     raw: Vec<u8>,
     stack: Vec<(usize, U24)>,
@@ -1047,7 +1112,7 @@ impl ZoneBuf {
 
 /// Builder for the uncompressed contents of a `NAVM` chunk.
 ///
-/// Calls to [`Self::start_bookmark`] and [`Self::end_bookmark`] must be paired, and their nesting
+/// Calls to [`Self::start_bookmark`] and [`Self::end_bookmark`] must be balanced, and their nesting
 /// determines the tree structure of the bookmarks in the natural way.
 pub struct BookmarkBuf {
     raw: Vec<u8>,

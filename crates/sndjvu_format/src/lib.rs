@@ -279,6 +279,21 @@ impl PaletteIndex {
         }
     }
 
+    pub fn new(x: u16) -> Self {
+        Self(x.to_be_bytes())
+    }
+
+    pub fn slice_as_bytes(slice: &[Self]) -> &[u8] {
+        // SAFETY PaletteIndex is repr(transparent)
+        let arrays: &[[u8; 2]] = unsafe {
+            core::slice::from_raw_parts(
+                slice.as_ptr().cast(),
+                slice.len(),
+            )
+        };
+        crate::shim::arrays_as_slice(arrays)
+    }
+
     pub fn get(self) -> u16 {
         u16::from_be_bytes(self.0)
     }
