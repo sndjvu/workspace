@@ -290,15 +290,15 @@ impl<'wr> Second<'wr> {
     }
 }
 
-enum Stage<'wr> {
+enum Pass<'wr> {
     First(First),
     Second(Second<'wr>),
 }
 
-impl<'wr> Stage<'wr> {
+impl<'wr> Pass<'wr> {
     fn put(&mut self, b: &[u8]) -> Result<(), Error> {
         match *self {
-            Stage::First(ref mut first) => {
+            Pass::First(ref mut first) => {
                 // in practice it seems we only use this to write chunk data,
                 // which means calling it without Cur::InChunk is a bug
                 // the behavior is to forward to the underlying Out and also
@@ -311,7 +311,7 @@ impl<'wr> Stage<'wr> {
                     _ => unreachable!(),
                 }
             }
-            Stage::Second(ref mut second) => second.put(b)?,
+            Pass::Second(ref mut second) => second.put(b)?,
         }
         Ok(())
     }
@@ -403,7 +403,7 @@ pub trait Serialize {
 }
 
 impl<'wr> Serializer<'wr> {
-    fn first_stage() -> Self {
+    fn first_pass() -> Self {
         Self {
             repr: SerializerRepr::First(First {
                 chunk_lens: Vec::new(),
@@ -416,7 +416,7 @@ impl<'wr> Serializer<'wr> {
         }
     }
 
-    fn second_stage(okay: Okay, out: ErasedOutMut<'wr>) -> Self {
+    fn second_pass(okay: Okay, out: ErasedOutMut<'wr>) -> Self {
         let Okay { num_components, dirm_data, chunk_lens, component_sizes, total } = okay;
         let _ = total; // not used
         Self {
@@ -434,7 +434,7 @@ impl<'wr> Serializer<'wr> {
     pub fn multi_page_bundled(self) -> SerializeMultiPageBundled<'wr> {
         match self.repr {
             SerializerRepr::First(first) => SerializeMultiPageBundled::Components(
-                SerializeComponents { stage: Stage::First(first) },
+                SerializeComponents { pass: Pass::First(first) },
             ),
             SerializerRepr::Second(compress_dirm) => SerializeMultiPageBundled::Head(compress_dirm),
         }
@@ -518,7 +518,7 @@ impl<'wr> SerializeMultiPageHead<'wr> {
         }
 
         Ok(SerializeComponents {
-            stage: Stage::Second(Second {
+            pass: Pass::Second(Second {
                 chunk_lens: self.chunk_lens.into_iter(),
                 component_lens: self.component_sizes.into_lengths(),
                 running,
@@ -530,14 +530,14 @@ impl<'wr> SerializeMultiPageHead<'wr> {
 
 /// Serializer for the components of a multi-page document.
 pub struct SerializeComponents<'wr> {
-    stage: Stage<'wr>,
+    pass: Pass<'wr>,
 }
 
 impl<'wr> SerializeComponents<'wr> {
     /// Begin serializing a `DJVI` component.
     pub fn djvi(&mut self, id: &str) -> Result<SerializeElements<'_, 'wr>, Error> {
-        self.stage.start_component(ComponentKind::Djvi, id)?;
-        Ok(SerializeElements { stage: &mut self.stage })
+        self.pass.start_component(ComponentKind::Djvi, id)?;
+        Ok(SerializeElements { pass: &mut self.pass })
     }
 
     /// Begin serializing a `DJVU` component.
@@ -550,10 +550,10 @@ impl<'wr> SerializeComponents<'wr> {
         gamma: u8,
         rotation: PageRotation,
     ) -> Result<SerializeElements<'_, 'wr>, Error> {
-        self.stage.start_component(ComponentKind::Djvu, id)?;
-        self.stage.start_chunk(b"INFO")?;
+        self.pass.start_component(ComponentKind::Djvu, id)?;
+        self.pass.start_chunk(b"INFO")?;
         out!(
-            self.stage;
+            self.pass;
             width.to_be_bytes(),
             height.to_be_bytes(),
             InfoVersion::CURRENT.pack(),
@@ -561,19 +561,19 @@ impl<'wr> SerializeComponents<'wr> {
             [gamma],
             [rotation as u8],
         )?;
-        Ok(SerializeElements { stage: &mut self.stage })
+        Ok(SerializeElements { pass: &mut self.pass })
     }
 
     /// Begin serializing a `THUM` component.
     pub fn thum(&mut self, id: &str) -> Result<SerializeThumbnails<'_, 'wr>, Error> {
-        self.stage.start_component(ComponentKind::Thum, id)?;
-        Ok(SerializeThumbnails { stage: &mut self.stage })
+        self.pass.start_component(ComponentKind::Thum, id)?;
+        Ok(SerializeThumbnails { pass: &mut self.pass })
     }
 
     /// Finish serialization after all components have been described.
     pub fn finish(self) -> Result<Okay, Error> {
-        match self.stage {
-            Stage::First(First {
+        match self.pass {
+            Pass::First(First {
                 mut chunk_lens,
                 mut component_sizes,
                 component_meta,
@@ -608,14 +608,14 @@ impl<'wr> SerializeComponents<'wr> {
                     total,
                 })
             }
-            Stage::Second(_) => Ok(Okay::dummy()),
+            Pass::Second(_) => Ok(Okay::dummy()),
         }
     }
 }
 
 /// Serializer for the elements of a `DJVU` or `DJVI` component.
 pub struct SerializeElements<'co, 'wr: 'co> {
-    stage: &'co mut Stage<'wr>,
+    pass: &'co mut Pass<'wr>,
 }
 
 impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
@@ -624,15 +624,15 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     /// The DjVu standard notes that "the use of the `ANTa` chunk is discouraged", the compressed
     /// `ANTz` chunk being preferred (see [`Self::antz`]).
     pub fn anta(&mut self, ant: &str) -> Result<(), Error> {
-        self.stage.start_chunk(b"ANTa")?;
-        out!(self.stage; ant.as_bytes())?;
+        self.pass.start_chunk(b"ANTa")?;
+        out!(self.pass; ant.as_bytes())?;
         Ok(())
     }
 
     /// Serialize an `ANTz` chunk.
     pub fn antz(&mut self, bzz: &[u8]) -> Result<(), Error> {
-        self.stage.start_chunk(b"ANTz")?;
-        out!(self.stage; bzz)?;
+        self.pass.start_chunk(b"ANTz")?;
+        out!(self.pass; bzz)?;
         Ok(())
     }
 
@@ -642,9 +642,9 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     /// `TXTz` chunk being preferred (see [`Self::txtz`]).
     pub fn txta(&mut self, text: &str, zones: &[Zone]) -> Result<(), Error> {
         let len: U24 = text.len().try_into()?;
-        self.stage.start_chunk(b"TXTa")?;
+        self.pass.start_chunk(b"TXTa")?;
         out!(
-            self.stage;
+            self.pass;
             len.to_be_bytes(),
             text,
             TxtVersion::CURRENT.pack(),
@@ -655,22 +655,22 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
 
     /// Serialize a `TXTz` chunk.
     pub fn txtz(&mut self, bzz: &[u8]) -> Result<(), Error> {
-        self.stage.start_chunk(b"TXTz")?;
-        out!(self.stage; bzz)?;
+        self.pass.start_chunk(b"TXTz")?;
+        out!(self.pass; bzz)?;
         Ok(())
     }
 
     /// Serialize a `Djbz` chunk.
     pub fn djbz(&mut self, jb2: &[u8]) -> Result<(), Error> {
-        self.stage.start_chunk(b"Djbz")?;
-        out!(self.stage; jb2)?;
+        self.pass.start_chunk(b"Djbz")?;
+        out!(self.pass; jb2)?;
         Ok(())
     }
 
     /// Serialize an `Sjbz` chunk.
     pub fn sjbz(&mut self, jb2: &[u8]) -> Result<(), Error> {
-        self.stage.start_chunk(b"Sjbz")?;
-        out!(self.stage; jb2)?;
+        self.pass.start_chunk(b"Sjbz")?;
+        out!(self.pass; jb2)?;
         Ok(())
     }
 
@@ -687,9 +687,9 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         if initial_cdc > 0x7f {
             return Err(OverflowError.into());
         }
-        self.stage.start_chunk(b"FG44")?;
+        self.pass.start_chunk(b"FG44")?;
         out!(
-            self.stage;
+            self.pass;
             [0], // serial number
             [num_slices],
             Iw44Version::CURRENT.pack(color_space),
@@ -714,9 +714,9 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         if initial_cdc > 0x7f {
             return Err(OverflowError.into());
         }
-        self.stage.start_chunk(b"BG44")?;
+        self.pass.start_chunk(b"BG44")?;
         out!(
-            self.stage;
+            self.pass;
             [0], // serial number
             [num_slices],
             Iw44Version::CURRENT.pack(color_space),
@@ -727,7 +727,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         )?;
         Ok(SerializeBg44Chunks {
             serial: 1,
-            stage: &mut self.stage,
+            pass: &mut self.pass,
         })
     }
 
@@ -735,7 +735,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
     pub fn fgbz(&mut self, palette: &[PaletteEntry], indices: Option<(usize, &[u8])>) -> Result<(), Error> {
         let palette_len: U24 = palette.len().try_into()?;
         out!(
-            self.stage;
+            self.pass;
             FgbzVersion::CURRENT.pack(indices.is_some()),
             palette_len.to_be_bytes(),
             crate::shim::arrays_as_slice(PaletteEntry::uncast_slice(palette)),
@@ -743,7 +743,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         if let Some((len, bzz)) = indices {
             let len: U24 = len.try_into()?;
             out!(
-                self.stage;
+                self.pass;
                 len.to_be_bytes(),
                 bzz,
             )?;
@@ -753,22 +753,22 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
 
     /// Serialize an `INCL` chunk.
     pub fn incl(&mut self, target_id: &str) -> Result<(), Error> {
-        self.stage.start_chunk(b"INCL")?;
-        out!(self.stage; target_id.as_bytes())?;
+        self.pass.start_chunk(b"INCL")?;
+        out!(self.pass; target_id.as_bytes())?;
         Ok(())
     }
 
     /// Serialize a `BGjp` chunk.
     pub fn bgjp(&mut self, jpeg: &[u8]) -> Result<(), Error> {
-        self.stage.start_chunk(b"BGjp")?;
-        out!(self.stage; jpeg)?;
+        self.pass.start_chunk(b"BGjp")?;
+        out!(self.pass; jpeg)?;
         Ok(())
     }
 
     /// Serialize an `FGjp` chunk.
     pub fn fgjp(&mut self, jpeg: &[u8]) -> Result<(), Error> {
-        self.stage.start_chunk(b"FGjp")?;
-        out!(self.stage; jpeg)?;
+        self.pass.start_chunk(b"FGjp")?;
+        out!(self.pass; jpeg)?;
         Ok(())
     }
 
@@ -778,7 +778,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
 /// Serializer for a sequence of `BG44` chunks within a page.
 pub struct SerializeBg44Chunks<'el, 'wr: 'el> {
     serial: u8,
-    stage: &'el mut Stage<'wr>,
+    pass: &'el mut Pass<'wr>,
 }
 
 impl<'el, 'wr: 'el> SerializeBg44Chunks<'el, 'wr> {
@@ -787,9 +787,9 @@ impl<'el, 'wr: 'el> SerializeBg44Chunks<'el, 'wr> {
         num_slices: u8,
         iw44: &[u8],
     ) -> Result<(), Error> {
-        self.stage.start_chunk(b"BG44")?;
+        self.pass.start_chunk(b"BG44")?;
         out!(
-            self.stage;
+            self.pass;
             [self.serial],
             [num_slices],
             iw44,
@@ -801,7 +801,7 @@ impl<'el, 'wr: 'el> SerializeBg44Chunks<'el, 'wr> {
 
 /// Serializer for the sequence of `TH44` chunks within a `THUM` component.
 pub struct SerializeThumbnails<'co, 'wr: 'co> {
-    stage: &'co mut Stage<'wr>,
+    pass: &'co mut Pass<'wr>,
 }
 
 impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
@@ -817,10 +817,10 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
         if initial_cdc > 0x7f {
             return Err(OverflowError.into());
         }
-        self.stage.start_chunk(b"TH44")?;
+        self.pass.start_chunk(b"TH44")?;
         let version = Iw44Version::CURRENT;
         out!(
-            self.stage;
+            self.pass;
             [0], // serial number
             [num_slices],
             version.pack(color_space),
@@ -838,19 +838,19 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
 /// It's a good idea to use a buffered writer here.
 #[cfg(feature = "std")]
 pub fn to_writer<T: Serialize, W: std::io::Write>(doc: &T, mut writer: W) -> Result<(), Error> {
-    let serializer = Serializer::first_stage();
+    let serializer = Serializer::first_pass();
     let okay = doc.serialize(serializer)?;
-    let serializer = Serializer::second_stage(okay, &mut writer as _);
+    let serializer = Serializer::second_pass(okay, &mut writer as _);
     let _okay = doc.serialize(serializer)?;
     Ok(())
 }
 
 /// Serialize a document and return a buffer of serialized data.
 pub fn to_vec<T: Serialize>(doc: &T) -> Result<Vec<u8>, Error> {
-    let serializer = Serializer::first_stage();
+    let serializer = Serializer::first_pass();
     let okay = doc.serialize(serializer)?;
     let mut buf = VecOut(Vec::with_capacity(okay.total as _));
-    let serializer = Serializer::second_stage(okay, &mut buf as _);
+    let serializer = Serializer::second_pass(okay, &mut buf as _);
     let _okay = doc.serialize(serializer)?;
     Ok(buf.0)
 }
