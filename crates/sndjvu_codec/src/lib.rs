@@ -20,3 +20,5 @@ pub enum Step<L, R> {
 pub(crate) mod zp;
 #[cfg(feature = "bzz")]
 pub mod bzz;
+#[cfg(feature = "jb2")]
+pub mod jb2;

@@ -7,7 +7,8 @@ edition = "2021"
 [features]
 std = []
 bzz = []
-djvu = ["bzz"]
+jb2 = []
+djvu = ["bzz", "jb2"]
 
 [dev-dependencies]
 proptest = "1.0.0"
