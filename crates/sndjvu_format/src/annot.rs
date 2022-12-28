@@ -11,16 +11,16 @@ struct Di<T>(T);
 ///
 /// Implements [`std::error::Error`] if the `std` crate feature is enabled.
 #[derive(Debug)]
-pub struct InvalidKeyError;
+pub struct KeyError;
 
-impl Display for InvalidKeyError {
+impl Display for KeyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "invalid key")
     }
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for InvalidKeyError {}
+impl std::error::Error for KeyError {}
 
 /// A string key occurring in the `metadata` annotation.
 #[derive(Clone, Debug)]
@@ -31,12 +31,12 @@ impl Key {
     ///
     /// The string is restricted to ASCII alphanumeric characters, and must begin with an ASCII
     /// alphabetic character.
-    pub fn new(s: &str) -> Result<Self, InvalidKeyError> {
+    pub fn new(s: &str) -> Result<Self, KeyError> {
         if s.chars().nth(0).map_or(false, |c| c.is_ascii_alphabetic()) &&
             s.chars().all(|c| c.is_ascii_alphanumeric()) {
             Ok(Self(s.into()))
         } else {
-            Err(InvalidKeyError)
+            Err(KeyError)
         }
     }
 }

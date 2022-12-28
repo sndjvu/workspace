@@ -1,26 +1,30 @@
 //! Serialization to the DjVu transfer format.
 //!
 //! If you have a Rust data type that represents a DjVu document, implementing this module's
-//! [`Serialize`] trait allows to you turn a value of that type into a blob of bytes in the
+//! [`Serialize`] trait allows you to turn a value of that type into a blob of bytes in the
 //! transfer format. The structure of the document is expressed by a sequence of method calls on
 //! various "serializer" objects, such as [`Serializer`], [`SerializeMultiPageBundled`], etc. This
 //! approach should be familiar from APIs like `std::fmt::Debug` and `serde::Serialize`.
 //!
 //! ## Two-pass approach
 //!
-//! The DjVu transfer format makes extensive use of length-prefixed fields. Because DjVu documents
-//! have tree structure, this creates a chicken/egg problem for serialization: we want to emit the
-//! bytes of the serialized document in order, but we don't know what value to use for (e.g.) the
-//! length field in the document header until the entire structure of the document has been
-//! described.
+//! Various fields in the DjVu transfer format describe the size/length or offset of some part of
+//! the document. Let's call these "length fields". A core goal of this module is to take complete
+//! responsibility for computing the correct values for such fields, since these computations are
+//! tightly coupled to the gritty details of the transfer format.
 //!
-//! In fact, it's even worse than this: some length metatada is stored in the *compressed* portion
-//! of the `DIRM` header chunk. Since the length of the compressed data is unpredictable until we
-//! know exactly what data will be compressed, it's not possible to simply write junk to these
-//! fields and fix them up later in serialization (which approach does work for length fields that
-//! are stored plain).
+//! Length fields present some obstacles to an elegant serialization API. Consider the `DIRM`
+//! chunk, which appears at the beginning of a multi-page document and contains some metadata about
+//! the components, including their offsets and sizes. The offsets appear in the "plain"
+//! (uncompressed) portion of the `DIRM` chunk, but the sizes are BZZ-compressed. This makes it
+//! impossible to emit a well-formed `DIRM` chunk until we know the entire structure of the
+//! document in detail, so that we can compute the size of each component, compress that data,
+//! and then compute the final offset of each component. (Because the `DIRM` chunk appears before
+//! the components, and because the size of the BZZ-compressed portion can't be determined without
+//! compressing the exact data in question, we really have to do things in this order.)
 //!
-//! The solution is to split serialization into two passes. On the first pass, we don't emit any
+//! The only solution, if we care about hiding the intricacies of the transfer format from
+//! downstream, is to split serialization into two passes. On the first pass, we don't emit any
 //! bytes, but only collect enough information to compute the value of every length field. On the
 //! second pass, we use that stored information to emit the bytes of the document, in order, with
 //! their correct values.
@@ -37,7 +41,6 @@ use crate::{
     Iw44ColorSpace, Iw44Version, PageRotation, PaletteEntry,
     PhantomMutable, TxtVersion, Zone, ZoneKind,
 };
-use crate::annot::Annot;
 use core::fmt::{Debug, Display, Formatter};
 use core::mem::replace;
 use alloc::string::String;
@@ -512,7 +515,7 @@ impl<'wr> SerializeMultiPageHead<'wr> {
         let mut off: u32 = tame!(4 + COMPONENT_HEADER_SIZE); // AT&T:FORM:$len:DJVM
         tame!(off += CHUNK_HEADER_SIZE); // DIRM:$len
         let mut dirm_len = tame!(1 + 2); // $flags:$num_components
-        let addl = 4u32.checked_mul(self.num_components as u32).ok_or(OverflowError)?;
+        let addl = 4u32.checked_mul(self.num_components.into()).ok_or(OverflowError)?;
         dirm_len = checked_sum!(dirm_len, addl)?;
         let addl: u32 = compressed.len().try_into().map_err(|_| OverflowError)?;
         dirm_len = checked_sum!(dirm_len, addl)?;
@@ -905,7 +908,7 @@ pub fn to_writer<T: Serialize, W: std::io::Write>(doc: &T, mut writer: W) -> Res
 pub fn to_vec<T: Serialize>(doc: &T) -> Result<Vec<u8>, Error> {
     let serializer = Serializer::first_pass();
     let okay = doc.serialize(serializer)?;
-    let mut buf = VecOut(Vec::with_capacity(okay.total as _));
+    let mut buf = VecOut(Vec::with_capacity(okay.total as usize));
     let serializer = Serializer::second_pass(okay, &mut buf as _);
     let _okay = doc.serialize(serializer)?;
     Ok(buf.0)
@@ -952,8 +955,7 @@ impl AnnotBuf {
         Self { raw: String::new() }
     }
 
-    /// Add an annotation.
-    pub fn add(&mut self, annot: &Annot) {
+    pub fn add(&mut self, annot: &crate::annot::Annot) {
         use core::fmt::Write;
         if self.raw.is_empty() {
             let _ = write!(self.raw, "{annot}");
@@ -1106,11 +1108,14 @@ impl ZoneBuf {
     }
 
     pub fn as_zones(&self) -> &[Zone] {
+        if !self.stack.is_empty() {
+            panic!()
+        }
         &self.inner
     }
 }
 
-/// Builder for the uncompressed contents of a `NAVM` chunk.
+/// Builder for the (uncompressed) data in a `NAVM` chunk.
 ///
 /// Calls to [`Self::start_bookmark`] and [`Self::end_bookmark`] must be balanced, and their nesting
 /// determines the tree structure of the bookmarks in the natural way.
