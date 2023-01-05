@@ -4,9 +4,10 @@ version = "0.0.0"
 
 authors = ["Cole Miller <m@cole-miller.net>"]
 description = "Parse and serialize DjVu documents"
-homepage = "https://www.sndjvu.org"
-repository = "https://github.com/sndjvu/workspace"
 edition = "2021"
+homepage = "https://www.sndjvu.org"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sndjvu/workspace"
 rust-version = "1.65.0" # std::backtrace
 
 [features]
