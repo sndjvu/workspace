@@ -23,7 +23,7 @@
 //! - [`ElementP::feed`]
 //!
 //! The return type of each of these looks like `Result<Progress<T, N>, Error>`, which is how we
-//! represent the alternation of these outcomes:
+//! represent this set of possible outcomes:
 //!
 //! - some part of the provided data was invalid (`Result::Err`)
 //! - not enough bytes were provided to parse the requested document feature
@@ -44,6 +44,7 @@ use alloc::vec::Vec;
 use std::backtrace::Backtrace;
 
 /// The outcome of a parsing operation, if no [`Error`] was encountered.
+#[derive(Debug)]
 pub enum Progress<T, N = Never> {
     /// Not enough data was presented to complete the parsing operation.
     None {
@@ -85,8 +86,7 @@ macro_rules! try_advance {
 
 /// An error encountered while parsing.
 ///
-/// Implements [`std::error::Error`] if the `std` crate feature is enabled. Contains a backtrace if
-/// the `backtrace` crate feature is enabled.
+/// Contains a backtrace if the `backtrace` crate feature is enabled.
 #[derive(Debug)]
 pub struct Error {
     #[cfg(feature = "backtrace")]
@@ -168,7 +168,7 @@ pub enum DocumentHead<'a> {
     },
 }
 
-/// Unparsed representation of the `INFO` chunk.
+/// Unparsed representation of an `INFO` chunk.
 #[derive(Clone, Debug)]
 pub struct RawInfo<'a> {
     content: Field<'a>,
@@ -205,7 +205,7 @@ impl<'a> RawInfo<'a> {
     }
 }
 
-/// Parsed representation of the `INFO` chunk.
+/// Parsed representation of an `INFO` chunk.
 #[derive(Debug)]
 pub struct Info {
     pub width: u16,
@@ -220,7 +220,8 @@ fn is_potential_chunk_id(xs: [u8; 4]) -> bool {
     xs.iter().all(u8::is_ascii_alphanumeric)
 }
 
-/// Parsed representation of an element of a page.
+/// An unparsed chunk that represents a page element.
+#[derive(Debug)]
 pub enum Element<'a> {
     Anta(RawAnta<'a>),
     Antz(RawAntz<'a>),
@@ -235,6 +236,10 @@ pub enum Element<'a> {
     Bgjp(RawBgjp<'a>),
     Fgjp(RawFgjp<'a>),
     Smmr(RawSmmr<'a>),
+    /// A chunk whose type was not recognized.
+    ///
+    /// Note that we signal an error instead of returning this variant if the chunk type field
+    /// contains non-ASCII-alphanumeric bytes.
     Unknown(Chunk<'a>),
 }
 
@@ -245,7 +250,7 @@ impl<'a> Element<'a> {
     /// [`ElementP::feed`] will return `Ok(Progress::End(()))`.
     pub fn after(&self) -> ElementP {
         match *self {
-            Self::Anta(RawAnta { after_pos, end_pos, .. })
+            | Self::Anta(RawAnta { after_pos, end_pos, .. })
             | Self::Antz(RawAntz { after_pos, end_pos, .. })
             | Self::Txta(RawTxta { after_pos, end_pos, .. })
             | Self::Txtz(RawTxtz { after_pos, end_pos, .. })
@@ -258,13 +263,13 @@ impl<'a> Element<'a> {
             | Self::Bgjp(RawBgjp { after_pos, end_pos, .. })
             | Self::Fgjp(RawFgjp { after_pos, end_pos, .. })
             | Self::Smmr(RawSmmr { after_pos, end_pos, .. })
-            | Self::Unknown(Chunk { after_pos, end_pos, .. })
-                => ElementP::new(after_pos, end_pos),
+            | Self::Unknown(Chunk { after_pos, end_pos, .. }) => ElementP::new(after_pos, end_pos),
         }
     }
 }
 
-/// Unparsed representation of the `ANTa` chunk.
+/// Unparsed representation of an `ANTa` chunk.
+#[derive(Debug)]
 pub struct RawAnta<'a> {
     content: StringField<'a>,
     after_pos: Pos,
@@ -277,6 +282,8 @@ impl<'a> RawAnta<'a> {
     }
 }
 
+/// Unparsed representation of an `ANTz` chunk.
+#[derive(Debug)]
 pub struct RawAntz<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -293,6 +300,8 @@ impl<'a> RawAntz<'a> {
     }
 }
 
+/// Contents of an `ANTz` chunk after BZZ decompression.
+#[derive(Debug)]
 pub struct DecodedAntz<'a> {
     content: StringField<'a>,
 }
@@ -303,7 +312,8 @@ impl<'a> DecodedAntz<'a> {
     }
 }
 
-/// Unparsed representation of the `TXTa` chunk.
+/// Unparsed representation of an `TXTa` chunk.
+#[derive(Debug)]
 pub struct RawTxta<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -316,6 +326,8 @@ impl<'a> RawTxta<'a> {
     }
 }
 
+/// Unparsed representation of a `TXTz` chunk.
+#[derive(Debug)]
 pub struct RawTxtz<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -332,7 +344,7 @@ impl<'a> RawTxtz<'a> {
     }
 }
 
-/// Parsed representation of the `TXTa` and `TXTz` chunks.
+/// Parsed representation of a `TXTa` or (decompressed) `TXTz` chunk.
 pub struct Txt<'a> {
     pub text: &'a [u8],
     pub version: TxtVersion,
@@ -364,6 +376,8 @@ impl<'a> Txt<'a> {
     }
 }
 
+/// Represents a `Djbz` chunk, which doesn't need further parsing.
+#[derive(Debug)]
 pub struct RawDjbz<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -376,6 +390,8 @@ impl<'a> RawDjbz<'a> {
     }
 }
 
+/// Represents an `Sjbz` chunk, which doesn't need further parsing.
+#[derive(Debug)]
 pub struct RawSjbz<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -388,6 +404,8 @@ impl<'a> RawSjbz<'a> {
     }
 }
 
+/// Unparsed representation of an `FG44` chunk.
+#[derive(Debug)]
 pub struct RawFg44<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -400,6 +418,8 @@ impl<'a> RawFg44<'a> {
     }
 }
 
+/// Unparsed representation of a `BG44` chunk.
+#[derive(Debug)]
 pub struct RawBg44<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -412,6 +432,8 @@ impl<'a> RawBg44<'a> {
     }
 }
 
+/// Parsed representation of an `FG44`, `BG44`, or `TH44` chunk.
+#[derive(Debug)]
 pub struct Iw44<'a> {
     pub kind: Iw44Kind,
     pub num_slices: u8,
@@ -454,6 +476,7 @@ impl<'a> Iw44<'a> {
     }
 }
 
+/// Subtypes of the `FG44`/`BG44`/`TH44` chunk types.
 #[derive(Clone, Copy, Debug)]
 pub enum Iw44Kind {
     Head {
@@ -466,6 +489,8 @@ pub enum Iw44Kind {
     Tail { serial: NonZeroU8 },
 }
 
+/// Unparsed representation of an `FGbz` chunk.
+#[derive(Debug)]
 pub struct RawFgbz<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -494,12 +519,16 @@ impl<'a> RawFgbz<'a> {
     }
 }
 
+/// Parsed representation of an `FGbz` chunk.
+#[derive(Debug)]
 pub struct Fgbz<'a> {
     pub version: FgbzVersion,
     pub palette: &'a [PaletteEntry],
     pub indices: Option<FgbzIndices<'a>>,
 }
 
+/// Compressed portion of an `FGbz` chunk.
+#[derive(Debug)]
 pub struct FgbzIndices<'a> {
     content: Field<'a>,
 }
@@ -518,7 +547,8 @@ impl<'a> FgbzIndices<'a> {
     }
 }
 
-/// Represents the `INCL` chunk, which doesn't need parsing.
+/// Represents an `INCL` chunk, which doesn't need parsing.
+#[derive(Debug)]
 pub struct RawIncl<'a> {
     content: StringField<'a>,
     after_pos: Pos,
@@ -531,6 +561,8 @@ impl<'a> RawIncl<'a> {
     }
 }
 
+/// Represents a `BGjp` chunk, which doesn't need parsing.
+#[derive(Debug)]
 pub struct RawBgjp<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -543,6 +575,8 @@ impl<'a> RawBgjp<'a> {
     }
 }
 
+/// Represents an `FGjp` chunk, which doesn't need parsing.
+#[derive(Debug)]
 pub struct RawFgjp<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -555,7 +589,8 @@ impl<'a> RawFgjp<'a> {
     }
 }
 
-/// Unparsed representation of the `Smmr` chunk.
+/// Unparsed representation of an `Smmr` chunk.
+#[derive(Debug)]
 pub struct RawSmmr<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -592,7 +627,8 @@ impl<'a> RawSmmr<'a> {
     }
 }
 
-/// Parsed representation of the `Smmr` chunk.
+/// Parsed representation of an `Smmr` chunk.
+#[derive(Debug)]
 pub struct Smmr<'a> {
     pub is_reverse_video: bool,
     pub width: u16,
@@ -600,11 +636,15 @@ pub struct Smmr<'a> {
     pub body: SmmrBody<'a>,
 }
 
+/// Possible formats for the MMR data in an `Smmr` chunk.
+#[derive(Debug)]
 pub enum SmmrBody<'a> {
     Bulk(Mmr<'a>),
     Striped(MmrStripes<'a>),
 }
 
+/// Raw MMR-compressed data from an `Smmr` chunk.
+#[derive(Debug)]
 pub struct Mmr<'a> {
     data: Field<'a>,
 }
@@ -615,6 +655,8 @@ impl<'a> Mmr<'a> {
     }
 }
 
+/// "Striped" MMR-compressed data from an `Smmr` chunk.
+#[derive(Debug)]
 pub struct MmrStripes<'a> {
     rows_per_stripe: u16,
     rest: Field<'a>,
@@ -630,6 +672,8 @@ impl<'a> MmrStripes<'a> {
     }
 }
 
+/// Fallible iterator for parsing the stripe data from an `Smmr` chunk.
+#[derive(Debug)]
 pub struct ParsingStripes<'a> {
     s: SplitInner<'a>,
 }
@@ -645,6 +689,8 @@ impl<'a> ParsingStripes<'a> {
     }
 }
 
+/// A chunk from a `DJVU` or `DJVI` component whose type wasn't recognized.
+#[derive(Debug)]
 pub struct Chunk<'a> {
     kind: Bstr<[u8; 4]>,
     content: Field<'a>,
@@ -662,6 +708,7 @@ impl<'a> Chunk<'a> {
     }
 }
 
+/// Unparsed representation of the `DIRM` chunk.
 #[derive(Clone, Debug)]
 pub struct RawDirm<'a> {
     content: Field<'a>,
@@ -692,6 +739,8 @@ impl<'a> RawDirm<'a> {
     }
 }
 
+/// Parsed representation of the `DIRM` chunk.
+#[derive(Debug)]
 pub struct Dirm<'a> {
     pub version: DirmVersion,
     pub num_components: u16,
@@ -699,6 +748,8 @@ pub struct Dirm<'a> {
     pub extra: DirmExtra<'a>,
 }
 
+/// Compressed portion of the `DIRM` chunk.
+#[derive(Debug)]
 pub struct DirmExtra<'a> {
     num_components: u16,
     content: Field<'a>,
@@ -751,6 +802,7 @@ impl<'a> DirmExtra<'a> {
     }
 }
 
+/// Basic metadata about one component of a multi-page document.
 #[derive(Clone)]
 pub struct ComponentMeta<'a> {
     pub len: u32,
@@ -772,6 +824,8 @@ impl<'a> Debug for ComponentMeta<'a> {
     }
 }
 
+/// Data from the `DIRM` chunk that's only present in bundled documents.
+#[derive(Debug)]
 pub struct Bundled<'a> {
     offsets: &'a [ComponentOffset],
     end_pos: Pos,
@@ -816,6 +870,8 @@ impl<'a> IntoIterator for Bundled<'a> {
     }
 }
 
+/// Iterator over "pointers" to each component of a bundled multi-page document.
+#[derive(Debug)]
 pub struct BundledIter<'a> {
     offsets: core::slice::Iter<'a, ComponentOffset>,
     end_pos: Pos,
@@ -842,6 +898,7 @@ impl<'a> core::iter::DoubleEndedIterator for BundledIter<'a> {
     }
 }
 
+/// Unparsed representation of the `NAVM` chunk.
 #[derive(Clone, Debug)]
 pub struct RawNavm<'a> {
     content: Field<'a>,
@@ -860,6 +917,8 @@ impl<'a> RawNavm<'a> {
     }
 }
 
+/// Contents of the `NAVM` chunk after BZZ decompression.
+#[derive(Debug)]
 pub struct DecodedNavm<'a> {
     num_bookmarks: u16,
     body: Field<'a>,
@@ -875,6 +934,8 @@ impl<'a> DecodedNavm<'a> {
     }
 }
 
+/// Fallible iterator for parsing the bookmarks from a decompressed `NAVM` chunk.
+#[derive(Debug)]
 pub struct ParsingBookmarks<'a> {
     remaining: u16,
     s: SplitInner<'a>,
@@ -903,6 +964,7 @@ impl<'a> ParsingBookmarks<'a> {
     }
 }
 
+/// A single bookmark record from the (decompressed) `NAVM` chunk.
 #[derive(Clone)]
 pub struct Bookmark<'a> {
     pub num_children: u8,
@@ -921,6 +983,7 @@ impl<'a> Debug for Bookmark<'a> {
 }
 
 /// Parsed representation of the start of a component.
+#[derive(Debug)]
 pub enum ComponentHead<'a> {
     Djvi {
         elements: ElementP,
@@ -934,7 +997,8 @@ pub enum ComponentHead<'a> {
     },
 }
 
-/// Unparsed representation of the `Smmr` chunk.
+/// Unparsed representation of an `Smmr` chunk.
+#[derive(Debug)]
 pub struct RawTh44<'a> {
     content: Field<'a>,
     after_pos: Pos,
@@ -1040,6 +1104,7 @@ impl ComponentP {
 }
 
 /// Pointer-like immutable cursor to the start or end of a thumbnail.
+#[derive(Debug)]
 pub struct ThumbnailP {
     pos: Pos,
     end_pos: Pos,
@@ -1280,6 +1345,7 @@ impl<'a> Debug for StringField<'a> {
     }
 }
 
+#[derive(Debug)]
 struct SplitInner<'a> {
     parent: Field<'a>,
     by: u32,

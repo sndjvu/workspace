@@ -32,7 +32,7 @@ impl Key {
     /// The string is restricted to ASCII alphanumeric characters, and must begin with an ASCII
     /// alphabetic character.
     pub fn new(s: &str) -> Result<Self, KeyError> {
-        if s.chars().nth(0).map_or(false, |c| c.is_ascii_alphabetic()) &&
+        if s.chars().next().map_or(false, |c| c.is_ascii_alphabetic()) &&
             s.chars().all(|c| c.is_ascii_alphanumeric()) {
             Ok(Self(s.into()))
         } else {

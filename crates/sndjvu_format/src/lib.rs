@@ -1,24 +1,34 @@
 //! sndjvu_format is a library for working with the transfer format for DjVu documents.
 //!
-//! ## Vocabulary
+//! The "transfer format" is the canonical DjVu file format defined by the DjVu v3 standard. You
+//! can use this library to parse a DjVu file or create one programmatically. The lowest-level
+//! details of the format are abstracted away, but you still need to understand the structure of a
+//! DjVu document at the "chunk" level (see below) to use this library effectively.
 //!
-//! The documentation generally assumes familiarity with the DjVu v3 standard.
+//! ## Overview of the DjVu v3 document model
 //!
-//! In the interest of precision, we use a small amount of vocabulary that's not taken directly
-//! from the standard. In particular:
+//! (This overview is not intended to substitute for reading the relevant parts of the DjVu v3
+//! standard.)
 //!
-//! - **component** means the portion of a multi-page document that's represented by a `FORM:DJVI`,
-//!   `FORM:DJVU`, or `FORM:THUM` container chunk. The standard calls these "files" or "component
-//!   files".
-//! - **element** means a data chunk inside a `FORM:DJVI` or `FORM:DJVU` (other than the `INFO`
-//!   chunk). The standard just calls these "chunks".
+//! A DjVu document is either *single-page* or *multi-page*. A single-page document consists of a
+//! single *component*; a multi-page document consists of zero or more components, plus some
+//! metadata.
+//!
+//! DjVu components come in three types: `DJVU`, `DJVI`, and `THUM`. A `DJVU` component represents
+//! a page, a `DJVI` component holds data that's shared between several pages, and a `THUM`
+//! component holds thumbnail images for several pages. The single component of a single-page
+//! document must be of type `DJVU`.
+//!
+//! Every piece of data in a DjVu document is contained in a *chunk*, and each chunk has a type.
+//! Most chunks are contained in a components; the exceptions are the `DIRM` and `NAVM` chunks that
+//! contain the metadata for a multi-page document. A chunk of type `INFO` can only appear at the
+//! start of a `DJVU` component (and is mandatory in that position); it describes some basic
+//! properties of the corresponding page, like its width and height in pixels. Other than the
+//! `INFO` chunk, the same types of chunk can appear in the `DJVU` and `DJVI` components. A chunk
+//! of one of these types is called an *element*, and describes one aspect of the page or pages
+//! with which it is associated (image data, OCRed text, annotations, etc.).
 
 #![no_std]
-#![allow(
-    clippy::needless_lifetimes,
-    clippy::new_without_default,
-    clippy::wrong_self_convention,
-)]
 #![deny(
     elided_lifetimes_in_paths,
     unsafe_op_in_unsafe_fn,
@@ -279,12 +289,12 @@ impl PaletteIndex {
         Self(x.to_be_bytes())
     }
 
-    pub fn slice_as_bytes(slice: &[Self]) -> &[u8] {
+    pub fn slice_as_bytes(selves: &[Self]) -> &[u8] {
         // SAFETY PaletteIndex is repr(transparent)
         let arrays: &[[u8; 2]] = unsafe {
             core::slice::from_raw_parts(
-                slice.as_ptr().cast(),
-                slice.len(),
+                selves.as_ptr().cast(),
+                selves.len(),
             )
         };
         crate::shim::arrays_as_slice(arrays)
@@ -418,6 +428,7 @@ const PhantomMutable: PhantomMutable = PhantomData;
 ///
 /// This will eventually become a simple alias for [the canonical never
 /// type](never).
+#[derive(Debug)]
 pub enum Never {}
 
 pub mod annot;

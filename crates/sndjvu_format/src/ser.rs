@@ -145,8 +145,19 @@ trait Out {
     fn put(&mut self, b: &[u8]) -> Result<(), Error>;
 }
 
-// TODO auto traits
-type ErasedOutMut<'wr> = &'wr mut (dyn Out + 'wr);
+struct ErasedOutMut<'wr>(&'wr mut (dyn Out + 'wr));
+
+impl<'wr> Debug for ErasedOutMut<'wr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "<omitted>")
+    }
+}
+
+impl<'wr> Out for ErasedOutMut<'wr> {
+    fn put(&mut self, data: &[u8]) -> Result<(), Error> {
+        self.0.put(data)
+    }
+}
 
 #[derive(Debug)]
 struct VecOut(Vec<u8>);
@@ -169,7 +180,7 @@ impl<W: std::io::Write> Out for W {
 macro_rules! out {
     ( $o:expr ; $( $b:expr ),* $( , )? ) => {
         (|| -> Result<(), Error> {
-            $( $o.put(::core::convert::AsRef::as_ref(&$b))?; )*
+            $( $o.put($b.as_ref())?; )*
             Ok(())
         })()
     };
@@ -247,6 +258,7 @@ impl ComponentMeta {
 }
 
 /// Opaque token returned from successful serialization.
+#[derive(Debug)]
 pub struct Okay {
     num_components: u16,
     dirm_data: Vec<u8>,
@@ -300,6 +312,7 @@ struct First {
     total: u32,
 }
 
+#[derive(Debug)]
 struct Second<'wr> {
     chunk_lens: <Vec<u32> as IntoIterator>::IntoIter,
     component_lens: ComponentLengths,
@@ -317,6 +330,7 @@ impl<'wr> Second<'wr> {
     }
 }
 
+#[derive(Debug)]
 enum Pass<'wr> {
     First(First),
     Second(Second<'wr>),
@@ -412,6 +426,7 @@ impl<'wr> Pass<'wr> {
     }
 }
 
+#[derive(Debug)]
 enum SerializerRepr<'wr> {
     First(First),
     Second(SerializeMultiPageHead<'wr>),
@@ -422,13 +437,12 @@ enum SerializerRepr<'wr> {
 /// An implementation of [`Serialize::serialize`] should call one of the methods of this type to
 /// select what kind of document is being serialized. Currently, only the bundled multi-page
 /// document format is supported.
+#[derive(Debug)]
 pub struct Serializer<'wr> {
     repr: SerializerRepr<'wr>,
 }
 
 /// Interface for describing the structure of a DjVu document.
-///
-/// Currently, only the bundled multi-page document structure is supported.
 pub trait Serialize {
     fn serialize(&self, serializer: Serializer<'_>) -> Result<Okay, Error>;
 }
@@ -482,12 +496,14 @@ impl<'wr> Serializer<'wr> {
 /// second pass, after enough information has been gathered to compute the contents of the `DIRM`
 /// chunk, the implementation is presented with the `Head` variant and must compress (a portion of)
 /// the `DIRM` data and pass it back to the serializer.
+#[derive(Debug)]
 pub enum SerializeMultiPageBundled<'wr> {
     Components(SerializeComponents<'wr>),
     Head(SerializeMultiPageHead<'wr>),
 }
 
 /// Serializer for the "head" data of a multi-page document (`DIRM` and `NAVM` chunks).
+#[derive(Debug)]
 pub struct SerializeMultiPageHead<'wr> {
     num_components: u16,
     dirm_data: Vec<u8>,
@@ -500,9 +516,9 @@ impl<'wr> SerializeMultiPageHead<'wr> {
     /// Access raw data for BZZ compression.
     ///
     /// The returned bytes should be compressed using a BZZ implementation, and the compressed data
-    /// passed as the first argument to [`SerializeMultiPageHead::dirm_and_navm`] to continue
+    /// passed as the first argument to [`SerializeMultiPageHead::dirm_navm`] to continue
     /// serialization.
-    pub fn for_compression(&self) -> &[u8] {
+    pub fn raw(&self) -> &[u8] {
         &self.dirm_data
     }
 
@@ -510,14 +526,14 @@ impl<'wr> SerializeMultiPageHead<'wr> {
     ///
     /// Create the `NAVM` data by building up a [`BookmarkBuf`] and passing the output of
     /// [`BookmarkBuf::as_bytes`] to a BZZ compressor.
-    pub fn dirm_and_navm(self, compressed: &[u8], navm: Option<&[u8]>) -> Result<SerializeComponents<'wr>, Error> {
+    pub fn dirm_navm(mut self, bzz: &[u8], navm: Option<&[u8]>) -> Result<SerializeComponents<'wr>, Error> {
         // accumulate offsets
         let mut off: u32 = tame!(4 + COMPONENT_HEADER_SIZE); // AT&T:FORM:$len:DJVM
         tame!(off += CHUNK_HEADER_SIZE); // DIRM:$len
         let mut dirm_len = tame!(1 + 2); // $flags:$num_components
         let addl = 4u32.checked_mul(self.num_components.into()).ok_or(OverflowError)?;
         dirm_len = checked_sum!(dirm_len, addl)?;
-        let addl: u32 = compressed.len().try_into().map_err(|_| OverflowError)?;
+        let addl: u32 = bzz.len().try_into().map_err(|_| OverflowError)?;
         dirm_len = checked_sum!(dirm_len, addl)?;
         off = checked_sum!(off, dirm_len)?;
         let navm_with_len = if let Some(navm) = navm {
@@ -548,7 +564,7 @@ impl<'wr> SerializeMultiPageHead<'wr> {
             b"DIRM", dirm_len.to_be_bytes(),
             DirmVersion::CURRENT.pack(true), self.num_components.to_be_bytes(),
             crate::shim::arrays_as_slice(&offsets),
-            compressed,
+            bzz,
         )?;
         if let Some((navm, navm_len)) = navm_with_len {
             if dirm_len % 2 != 0 {
@@ -569,6 +585,7 @@ impl<'wr> SerializeMultiPageHead<'wr> {
 }
 
 /// Serializer for the components of a multi-page document.
+#[derive(Debug)]
 pub struct SerializeComponents<'wr> {
     pass: Pass<'wr>,
 }
@@ -654,6 +671,7 @@ impl<'wr> SerializeComponents<'wr> {
 }
 
 /// Serializer for the elements of a `DJVU` or `DJVI` component.
+#[derive(Debug)]
 pub struct SerializeElements<'co, 'wr: 'co> {
     pass: &'co mut Pass<'wr>,
 }
@@ -781,7 +799,7 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
         )?;
         Ok(SerializeBg44Chunks {
             serial: 1,
-            pass: &mut self.pass,
+            pass: self.pass,
         })
     }
 
@@ -835,12 +853,14 @@ impl<'co, 'wr: 'co> SerializeElements<'co, 'wr> {
 }
 
 /// Serializer for a sequence of `BG44` chunks within a `DJVI` or `DJVU` component.
+#[derive(Debug)]
 pub struct SerializeBg44Chunks<'el, 'wr: 'el> {
     serial: u8,
     pass: &'el mut Pass<'wr>,
 }
 
 impl<'el, 'wr: 'el> SerializeBg44Chunks<'el, 'wr> {
+    /// Serialize the next chunk in the sequence.
     pub fn chunk(
         &mut self,
         num_slices: u8,
@@ -858,12 +878,16 @@ impl<'el, 'wr: 'el> SerializeBg44Chunks<'el, 'wr> {
     }
 }
 
-/// Serializer for the sequence of `TH44` chunks within a `THUM` component.
+/// Serializer for the chunks of a `THUM` component.
+#[derive(Debug)]
 pub struct SerializeThumbnails<'co, 'wr: 'co> {
     pass: &'co mut Pass<'wr>,
 }
 
 impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
+    /// Serialize a `TH44` chunk.
+    ///
+    /// `initial_cdc` must not exceed 127.
     pub fn th44(
         &mut self,
         num_slices: u8,
@@ -874,7 +898,7 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
         iw44: &[u8],
     ) -> Result<(), Error> {
         if initial_cdc > 0x7f {
-            return Err(OverflowError.into());
+            panic!()
         }
         self.pass.start_chunk(b"TH44")?;
         let version = Iw44Version::CURRENT;
@@ -892,28 +916,29 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
     }
 }
 
-/// Serialize a document and write the serialized data to the given sink.
+/// Serialize a document into a provided writer.
 ///
-/// The serializer makes many small writes, so make sure that `writer` is buffered.
+/// The serializer makes many small writes, so make sure that the writer is buffered.
 #[cfg(feature = "std")]
 pub fn to_writer<T: Serialize, W: std::io::Write>(doc: &T, mut writer: W) -> Result<(), Error> {
     let serializer = Serializer::first_pass();
     let okay = doc.serialize(serializer)?;
-    let serializer = Serializer::second_pass(okay, &mut writer as _);
+    let serializer = Serializer::second_pass(okay, ErasedOutMut(&mut writer as _));
     let _okay = doc.serialize(serializer)?;
     Ok(())
 }
 
-/// Serialize a document and return a buffer of serialized data.
+/// Serialize a document into a buffer of bytes.
 pub fn to_vec<T: Serialize>(doc: &T) -> Result<Vec<u8>, Error> {
     let serializer = Serializer::first_pass();
     let okay = doc.serialize(serializer)?;
     let mut buf = VecOut(Vec::with_capacity(okay.total as usize));
-    let serializer = Serializer::second_pass(okay, &mut buf as _);
+    let serializer = Serializer::second_pass(okay, ErasedOutMut(&mut buf as _));
     let _okay = doc.serialize(serializer)?;
     Ok(buf.0)
 }
 
+#[derive(Clone, Copy, Debug)]
 struct U24(u32);
 
 impl U24 {
@@ -946,22 +971,24 @@ impl TryFrom<usize> for U24 {
 }
 
 /// Builder for the (uncompressed) data in an `ANTa` or `ANTz` chunk.
+#[derive(Clone, Debug, Default)]
 pub struct AnnotBuf {
     raw: String,
 }
 
 impl AnnotBuf {
     pub fn new() -> Self {
-        Self { raw: String::new() }
+        Self::default()
     }
 
-    pub fn add(&mut self, annot: &crate::annot::Annot) {
+    pub fn add(&mut self, annot: &crate::annot::Annot) -> &mut Self {
         use core::fmt::Write;
         if self.raw.is_empty() {
             let _ = write!(self.raw, "{annot}");
         } else {
             let _ = write!(self.raw, " {annot}");
         }
+        self
     }
 
     pub fn as_str(&self) -> &str {
@@ -1000,6 +1027,7 @@ impl Zone {
 ///
 /// Calls to [`Self::start_zone`] and [`Self::end_zone`] must be balanced, and their nesting
 /// determines the tree structure of the zones in the natural way.
+#[derive(Clone, Debug)]
 pub struct TxtBuf {
     raw: Vec<u8>,
     stack: Vec<(usize, U24)>,
@@ -1031,7 +1059,7 @@ impl TxtBuf {
         if let Some(&mut (_, ref mut count)) = self.stack.last_mut() {
             count.inc()?;
         }
-        let pos = self.raw.len() + 14;
+        let pos = tame!(self.raw.len() + 14);
         let zone = Zone::new(
             kind,
             x_offset,
@@ -1063,7 +1091,7 @@ impl TxtBuf {
 ///
 /// Calls to [`Self::start_zone`] and [`Self::end_zone`] must be balanced, and their nesting
 /// determines the tree structure of the zones in the natural way.
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ZoneBuf {
     stack: Vec<(usize, U24)>,
     inner: Vec<Zone>,
@@ -1082,7 +1110,7 @@ impl ZoneBuf {
         width: i16,
         height: i16,
         text_len: usize,
-    ) -> Result<(), Error> {
+    ) -> Result<&mut Self, Error> {
         let text_len = text_len.try_into()?;
         if let Some(&mut (_, ref mut n)) = self.stack.last_mut() {
             n.inc()?;
@@ -1099,12 +1127,13 @@ impl ZoneBuf {
         );
         self.inner.push(zone);
         self.stack.push((pos, U24(0)));
-        Ok(())
+        Ok(self)
     }
 
-    pub fn end_zone(&mut self) {
+    pub fn end_zone(&mut self) -> &mut Self {
         let (i, n) = self.stack.pop().unwrap();
         self.inner[i].num_children = n.to_be_bytes();
+        self
     }
 
     pub fn as_zones(&self) -> &[Zone] {
@@ -1119,6 +1148,7 @@ impl ZoneBuf {
 ///
 /// Calls to [`Self::start_bookmark`] and [`Self::end_bookmark`] must be balanced, and their nesting
 /// determines the tree structure of the bookmarks in the natural way.
+#[derive(Clone, Debug, Default)]
 pub struct BookmarkBuf {
     raw: Vec<u8>,
     count: u16,
@@ -1130,7 +1160,7 @@ impl BookmarkBuf {
         Self { raw: alloc::vec![0, 0], count: 0, stack: Vec::new() }
     }
 
-    pub fn start_bookmark(&mut self, description: &str, url: &str) -> Result<(), Error> {
+    pub fn start_bookmark(&mut self, description: &str, url: &str) -> Result<&mut Self, Error> {
         let description_len: U24 = description.len().try_into()?;
         let url_len: U24 = url.len().try_into()?;
         self.count = self.count.checked_add(1).ok_or(OverflowError)?;
@@ -1144,12 +1174,13 @@ impl BookmarkBuf {
         self.raw.extend_from_slice(description.as_bytes());
         self.raw.extend_from_slice(&url_len.to_be_bytes());
         self.raw.extend_from_slice(url.as_bytes());
-        Ok(())
+        Ok(self)
     }
 
-    pub fn end_bookmark(&mut self) {
+    pub fn end_bookmark(&mut self) -> &mut Self {
         let (i, n) = self.stack.pop().unwrap();
         self.raw[i] = n;
+        self
     }
 
     pub fn as_bytes(&self) -> &[u8] {
