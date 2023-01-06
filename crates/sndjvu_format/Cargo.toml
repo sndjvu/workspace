@@ -1,6 +1,6 @@
 [package]
 name = "sndjvu_format"
-version = "0.1.0"
+version = "0.1.1"
 
 authors = ["Cole Miller <m@cole-miller.net>"]
 description = "Parse and serialize DjVu documents"
