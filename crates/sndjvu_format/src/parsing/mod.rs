@@ -1038,6 +1038,10 @@ impl ElementP {
         Self { pos, end_pos }
     }
 
+    pub fn offset(&self) -> u32 {
+        self.pos
+    }
+
     pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<Element<'a>, ()>, Error> {
         if self.pos == self.end_pos {
             return Ok(Progress::End(()));
