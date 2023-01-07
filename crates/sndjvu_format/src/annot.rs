@@ -10,7 +10,7 @@ struct Di<T>(T);
 /// The error when attempting to construct a [`Key`] that contains invalid characters.
 ///
 /// Implements [`std::error::Error`] if the `std` crate feature is enabled.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct KeyError;
 
 impl Display for KeyError {
@@ -230,7 +230,7 @@ impl Display for Link {
 }
 
 /// A cartesian coordinate pair, as used in the [`maparea`](Maparea) annotation.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Point {
     pub x: u32,
     pub y: u32,
@@ -244,7 +244,7 @@ impl Display for Di<Point> {
 }
 
 /// Highlighting of a `rect` in the [`maparea`](Maparea) annotation.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Highlight {
     pub color: Color,
     pub opacity: u32,
@@ -258,7 +258,7 @@ impl Display for Di<Highlight> {
 }
 
 /// Border format of a [`maparea`](Maparea) annotation.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Border {
     None,
     Xor,
@@ -403,7 +403,7 @@ impl Display for Shape {
 ///         (rect 543 2859 408 183) (xor))",
 /// );
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Maparea {
     pub link: Link,
     pub comment: Quoted,
@@ -427,7 +427,7 @@ pub struct Maparea {
 ///     "(background #FFFFFF) (zoom page) (mode bw) (align center top)",
 /// );
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Annot {
     Background(Color),
     Zoom(Zoom),
