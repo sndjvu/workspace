@@ -275,6 +275,12 @@ impl Default for Border {
     }
 }
 
+impl From<Color> for Border {
+    fn from(x: Color) -> Self {
+        Self::Color(x)
+    }
+}
+
 impl Display for Border {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match *self {
