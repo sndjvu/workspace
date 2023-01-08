@@ -1,3 +1,5 @@
+//! The BZZ general-purpose block compression algorithm.
+
 use alloc::vec::Vec;
 use alloc::boxed::Box;
 

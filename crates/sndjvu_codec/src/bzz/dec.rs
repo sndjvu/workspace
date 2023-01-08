@@ -1,4 +1,53 @@
 //! BZZ decoding.
+//!
+//! This module implements a strongly-typed state machine. The states are:
+//!
+//! - [`Start`]: ready to decompress a block of input
+//! - [`Block`]: we've decoded the size of a block and are in the process of decoding its contents
+//! - [`Shuffle`]: we've decoded the stream of "symbols" that represents the current block, and are
+//!   ready to (1) "shuffle" those symbols into output bytes and (2) start decompressing the next
+//!   block. (These two can proceed in parallel, which is one reason for the decomposed
+//!   state-machine design.)
+//!
+//! The functions [`Start::step`] and [`Block::step`] implement state transitions that consume some
+//! bytes from the input stream. You can present bytes to the decoder incrementally, and these
+//! functions will return [`Step::Incomplete`] when more bytes need to be presented; the decoder is
+//! "suspended", see [`StartSave`] and [`BlockSave`].
+//!
+//! ## Example decoding loop
+//!
+//! ```ignore
+//! # use sndjvu_codec::bzz::{Scratch, dec::*};
+//! fn decompress(bzz: &[u8], scratch: &mut Scratch) -> Result<Vec<u8>, Error> {
+//!     let mut out = vec![];
+//!     let mut start = start(bzz);
+//!     loop {
+//!         let mut block = loop {
+//!             start = match start.step(scratch) {
+//!                 Complete(None) => return Ok(out),
+//!                 Complete(Some(enc)) => break enc,
+//!                 Incomplete(save) => save.seal(),
+//!             };
+//!         };
+//!         let (shuffle, next) = loop {
+//!             block = match block.step()? {
+//!                 Complete((shuf, enc)) => break (shuf, enc),
+//!                 Incomplete(save) => save.seal(),
+//!             };
+//!         };
+//!         let pos = out.len();
+//!         out.resize(pos + shuffle.len(), 0);
+//!         shuffle.run(&mut out[pos..]);
+//!         start = next;
+//!     }
+//! }
+//! ```
+//!
+//! Or at least, that's the ideal usage. Unfortunately, a rustc bug currently causes the borrow
+//! check to incorrectly reject this code, see [issue 70919](https://github.com/rust-lang/rust/issues/70919).
+//! You can work around this obstacle by wrapping `start`, `block`, and `next` in [`core::mem::ManuallyDrop`]
+//! and calling `ManuallyDrop::into_inner` at the appropriate points (thanks to Frank Steffahn for
+//! suggesting this trick).
 
 use crate::Step::{self, *};
 use crate::zp;
@@ -107,6 +156,7 @@ fn decode_u8(
     n - (1 << num_bits)
 }
 
+/// Initial state of the decoder, ready to start a block.
 pub struct Start<'dec> {
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
     zp: zp::Decoder<'dec>,
@@ -114,6 +164,7 @@ pub struct Start<'dec> {
     mtf_array: Box<[Symbol; 256]>,
 }
 
+/// Start decoding some BZZ-compressed bytes.
 pub fn start(bzz: &[u8]) -> Start<'_> {
     Start {
         contexts: Box::new([zp::Context::NEW; NUM_CONTEXTS]),
@@ -123,6 +174,11 @@ pub fn start(bzz: &[u8]) -> Start<'_> {
 }
 
 impl<'dec> Start<'dec> {
+    /// Try to decode the size of the next block.
+    ///
+    /// Returns `Step::Complete(Some(_))` if the size was successfully decoded,
+    /// `Step::Complete(None)` if there is no next block, or `Step::Incomplete(_)` if more input
+    /// bytes are needed to proceed.
     pub fn step<'scratch>(self, scratch: &'scratch mut Scratch) -> Step<Option<Block<'dec, 'scratch>>, StartSave> {
         let mut zp = match self.zp.provision(24 + 2) {
             Complete(dec) => dec,
@@ -167,6 +223,7 @@ impl<'dec> Start<'dec> {
     }
 }
 
+/// Suspended state of the decoder that will resolve to [`Start`].
 pub struct StartSave {
     zp: zp::dec::DecoderSave,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
@@ -174,6 +231,7 @@ pub struct StartSave {
 }
 
 impl StartSave {
+    /// Provide more input bytes.
     pub fn resume(self, bzz: &[u8]) -> Start<'_> {
         Start {
             zp: self.zp.resume(bzz),
@@ -182,6 +240,7 @@ impl StartSave {
         }
     }
 
+    /// Signal that the end of input has been reached.
     pub fn seal<'dec>(self) -> Start<'dec> {
         Start {
             zp: self.zp.seal(),
@@ -200,6 +259,7 @@ struct BlockProgress {
     mtf_index: Option<u8>,
 }
 
+/// State of the decoder while decoding the contents of a block.
 pub struct Block<'dec, 'scratch> {
     zp: zp::Decoder<'dec>,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
@@ -207,6 +267,7 @@ pub struct Block<'dec, 'scratch> {
     scratch: &'scratch mut Scratch,
 }
 
+/// Suspended state of the decoder that will resolve to [`Block`].
 pub struct BlockSave<'scratch> {
     zp: zp::dec::DecoderSave,
     contexts: Box<[zp::Context; NUM_CONTEXTS]>,
@@ -214,16 +275,25 @@ pub struct BlockSave<'scratch> {
     scratch: &'scratch mut Scratch,
 }
 
+/// State of the decoder after the initial decoding pass over a block.
+///
+/// A second pass over the decoded data is needed to compute the output bytes, and this is
+/// implemented by [`Self::run`]. This doesn't need further access to the input byte stream, so
+/// decoding of the next block can proceed in parallel.
 pub struct Shuffle<'scratch> {
     marker: u32,
     scratch: &'scratch mut Scratch,
 }
 
 impl<'scratch> Shuffle<'scratch> {
+    /// The length of the output block.
     pub fn len(&self) -> usize {
         self.scratch.shadow.len() - 1
     }
 
+    /// Run the inverse Burrows–Wheeler transform to compute the output block.
+    ///
+    /// The length of `out` must be equal to `self.len()`.
     pub fn run(self, out: &mut [u8]) {
         assert_eq!(out.len(), self.len(), "usage error: passed a slice of the wrong length to `Shuffle::run`");
         bwt_inv(self.marker, out, self.scratch);
@@ -231,16 +301,23 @@ impl<'scratch> Shuffle<'scratch> {
 }
 
 impl<'scratch> BlockSave<'scratch> {
+    /// Provide more input bytes.
     pub fn resume<'dec>(self, bzz: &'dec [u8]) -> Block<'dec, 'scratch> {
         Block { zp: self.zp.resume(bzz), contexts: self.contexts, progress: self.progress, scratch: self.scratch }
     }
 
+    /// Signal that the end of input has been reached.
     pub fn seal<'dec>(self) -> Block<'dec, 'scratch> {
         Block { zp: self.zp.seal(), contexts: self.contexts, progress: self.progress, scratch: self.scratch }
     }
 }
 
 impl<'dec, 'scratch> Block<'dec, 'scratch> {
+    /// Make progress on decoding the block.
+    ///
+    /// Returns `Err(_)` if the input was invalid, `Ok(Step::Complete(_))` if the block was decoded
+    /// completely, or `Ok(Step::Incomplete(_))` if more input bytes are needed (this does not mean
+    /// that no progress was made).
     pub fn step(self) -> Result<Step<(Shuffle<'scratch>, Start<'dec>), BlockSave<'scratch>>, Error> {
         let Self { mut contexts, mut zp, mut progress, scratch } = self;
         while progress.i < progress.size {

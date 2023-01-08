@@ -12,8 +12,11 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+/// Represents the outcome of a coding operation, if no error was encountered.
 pub enum Step<L, R> {
+    /// Enough bytes were available and the coding operation completed successfully.
     Complete(L),
+    /// Not enough input bytes were provided to complete the coding operation.
     Incomplete(R),
 }
 
