@@ -27,7 +27,7 @@ impl Symbol {
 #[derive(Debug)]
 pub struct Scratch {
     shadow: Vec<u8>,
-    counts: Option<Box<[u32; 256]>>, // XXX not needed for compression?
+    counts: Option<Box<[u32; 256]>>,
     ranks: Vec<u32>,
 }
 

@@ -36,12 +36,6 @@ impl Display for Error {
     }
 }
 
-impl From<core::convert::Infallible> for Error {
-    fn from(x: core::convert::Infallible) -> Self {
-        match x {}
-    }
-}
-
 #[cfg(feature = "std")]
 impl std::error::Error for Error {}
 
@@ -231,14 +225,7 @@ impl<'scratch> Shuffle<'scratch> {
     }
 
     pub fn run(self, out: &mut [u8]) {
-        if out.len() != self.len() {
-            panic!(
-                "usage error: passed a slice of the wrong length to `ShuffleBlock::shuffle` \
-                 (expected {}, found {})",
-                self.len(),
-                out.len(),
-            )
-        }
+        assert_eq!(out.len(), self.len(), "usage error: passed a slice of the wrong length to `Shuffle::run`");
         bwt_inv(self.marker, out, self.scratch);
     }
 }
@@ -298,7 +285,6 @@ impl<'dec, 'scratch> Block<'dec, 'scratch> {
             progress.i += 1;
         }
 
-        // inverse Burrows-Wheeler step
         let marker = progress.marker.ok_or(Error { kind: ErrorKind::MissingMarker })?;
 
         // ready to decode the next block header
