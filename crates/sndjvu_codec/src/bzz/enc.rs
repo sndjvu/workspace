@@ -4,6 +4,7 @@ use crate::Step::{self, *};
 use crate::zp;
 use super::{Scratch, Speed, MtfWithInv, Symbol, NUM_CONTEXTS};
 use alloc::boxed::Box;
+use core::cell::Cell;
 use core::cmp::Ordering;
 
 pub(super) fn bwt(input: &[u8], scratch: &mut Scratch) -> u32 {
@@ -72,7 +73,7 @@ fn encode_u8(
     }
 }
 
-pub fn start(buf: &mut [u8]) -> Start<'_> {
+pub fn start(buf: &[Cell<u8>]) -> Start<'_> {
     // check that we have enough bytes in case the caller flushes immediately
     let zp = match zp::Encoder::new(buf).provision(24) {
         Complete(enc) => enc,
@@ -166,7 +167,7 @@ pub struct StartSave {
 }
 
 impl StartSave {
-    pub fn resume(self, data: &mut [u8]) -> Start<'_> {
+    pub fn resume(self, data: &[Cell<u8>]) -> Start<'_> {
         Start {
             zp: self.zp.resume(data),
             array: self.array,
@@ -270,7 +271,7 @@ pub struct BlockSave<'scratch> {
 }
 
 impl<'scratch> BlockSave<'scratch> {
-    pub fn resume<'enc>(self, data: &'enc mut [u8]) -> Block<'enc, 'scratch> {
+    pub fn resume<'enc>(self, data: &'enc [Cell<u8>]) -> Block<'enc, 'scratch> {
         Block {
             contexts: self.contexts,
             progress: self.progress,

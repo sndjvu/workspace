@@ -1,6 +1,7 @@
 use crate::Step::{self, *};
 use super::{Context, Entry};
 use core::mem::take;
+use core::cell::Cell;
 
 struct State {
     a: u32,
@@ -31,14 +32,14 @@ impl<T> Out<T> {
 }
 
 struct Place<'a> {
-    inner: core::slice::IterMut<'a, u8>,
+    inner: core::slice::Iter<'a, Cell<u8>>,
     off: usize,
 }
 
 impl<'a> Out<Place<'a>> {
     fn dispense(&mut self) {
         // FIXME better panic message (mention provisioning)
-        *self.place.inner.next().unwrap() = take(&mut self.ready);
+        self.place.inner.next().unwrap().set(take(&mut self.ready));
         self.place.off += 1;
         self.dispense_countdown = 8;
     }
@@ -109,10 +110,10 @@ pub struct EncoderSave {
 }
 
 impl EncoderSave {
-    pub fn resume(self, buf: &mut [u8]) -> Encoder<'_> {
+    pub fn resume(self, buf: &[Cell<u8>]) -> Encoder<'_> {
         Encoder {
             state: self.state,
-            out: self.out.relay(Place { inner: buf.iter_mut(), off: 0 }),
+            out: self.out.relay(Place { inner: buf.iter(), off: 0 }),
             #[cfg(debug_assertions)] remaining: 0,
         }
     }
@@ -123,7 +124,7 @@ const THREE_EIGHTHS: u32 = 0x60_00;
 const ONE: u32 = 0x1_00_00;
 
 impl<'a> Encoder<'a> {
-    pub fn new(data: &'a mut [u8]) -> Self {
+    pub fn new(data: &'a [Cell<u8>]) -> Self {
         Self {
             state: State { a: 0, u: 0 },
             out: Out {
@@ -133,7 +134,7 @@ impl<'a> Encoder<'a> {
                 ready: 0,
                 dispense_countdown: 8,
 
-                place: Place { inner: data.iter_mut(), off: 0 },
+                place: Place { inner: data.iter(), off: 0 },
             },
             #[cfg(debug_assertions)] remaining: 0,
         }
