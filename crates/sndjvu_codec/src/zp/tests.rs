@@ -3,6 +3,8 @@ use proptest::prelude::*;
 use super::{Context, Encoder, Decoder};
 use crate::Step::*;
 
+use core::cell::Cell;
+
 const NUM_CONTEXTS: usize = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,7 +28,8 @@ proptest! {
 
         let mut contexts = [Context::NEW; NUM_CONTEXTS];
         let mut buf = vec![0xff; 8 * records.len()]; // XXX
-        let mut encoder = match Encoder::new(&mut buf[..]).provision(records.len() as u32) {
+        let slice = Cell::from_mut(&mut buf[..]).as_slice_of_cells();
+        let mut encoder = match Encoder::new(slice).provision(records.len() as u32) {
             Complete(enc) => enc,
             Incomplete(_) => panic!(),
         };

@@ -3,6 +3,7 @@ use super::Scratch;
 use proptest::prelude::*;
 use std::vec::Vec;
 use std::{vec, format};
+use std::cell::Cell;
 
 fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
     use std::mem::ManuallyDrop;
@@ -10,7 +11,8 @@ fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
 
     let mut out = vec![0; 4096];
     let mut pos = 0;
-    let mut start = ManuallyDrop::new(start(&mut out[pos..]));
+    let out_slice = Cell::from_mut(&mut out[pos..]).as_slice_of_cells();
+    let mut start = ManuallyDrop::new(start(out_slice));
     for chunk in data.chunks(100) {
         let mut block = loop {
             start = match ManuallyDrop::into_inner(start).step(chunk, scratch) {
@@ -18,7 +20,8 @@ fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
                 Incomplete((off, save)) => {
                     pos += off;
                     out.resize(pos + 4096, 0);
-                    ManuallyDrop::new(save.resume(&mut out[pos..]))
+                    let out_slice = Cell::from_mut(&mut out[pos..]).as_slice_of_cells();
+                    ManuallyDrop::new(save.resume(out_slice))
                 }
             };
         };
@@ -28,7 +31,8 @@ fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
                 Incomplete((off, save)) => {
                     pos += off;
                     out.resize(pos + 4096, 0);
-                    ManuallyDrop::new(save.resume(&mut out[pos..]))
+                    let out_slice = Cell::from_mut(&mut out[pos..]).as_slice_of_cells();
+                    ManuallyDrop::new(save.resume(out_slice))
                 }
             };
         };
