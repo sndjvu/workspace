@@ -23,10 +23,14 @@ impl Display for KeyError {
 impl std::error::Error for KeyError {}
 
 /// A string key occurring in the `metadata` annotation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Key(Arc<str>);
 
 impl Key {
+    pub(crate) fn new_unchecked(s: &str) -> Self {
+        Self(s.into())
+    }
+
     /// Construct a new key.
     ///
     /// The string is restricted to ASCII alphanumeric characters, and must begin with an ASCII
@@ -34,7 +38,7 @@ impl Key {
     pub fn new(s: &str) -> Result<Self, KeyError> {
         if s.chars().nth(0).map_or(false, |c| c.is_ascii_alphabetic()) &&
             s.chars().all(|c| c.is_ascii_alphanumeric()) {
-            Ok(Self(s.into()))
+            Ok(Self::new_unchecked(s))
         } else {
             Err(KeyError)
         }
@@ -51,7 +55,8 @@ impl Display for Key {
 #[derive(Clone, Debug)]
 pub struct Quoted {
     // data is stored in *escaped* repr, without surrounding quotes
-    data: Arc<str>,
+    pub(crate) data: Arc<str>,
+    pub(crate) starts_at: usize,
 }
 
 impl Quoted {
@@ -65,14 +70,136 @@ impl Quoted {
                 '"' => data.push_str("\\\""),
                 '\\' => data.push_str("\\\\"),
                 np if np < ' ' || np == '\x7f' => {
-                    let _ = write!(&mut data, "\\{:03o}", np as u32);
+                    let _ = write!(&mut data, "\\{:03o}", np as u8);
                 }
                 other => data.push(other),
             }
         }
-        Self { data: data.into() }
+        Self { data: data.into(), starts_at: 0 }
+    }
+
+    pub(crate) fn new_raw(s: &str, starts_at: usize) -> Self {
+        Self { data: s.into(), starts_at }
+    }
+
+    pub fn scalars(&self) -> Scalars<'_> {
+        Scalars::new(&self.data[self.starts_at..])
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scalar {
+    Char(char),
+    Byte(u8),
+}
+
+pub struct Scalars<'a> {
+    s: &'a str,
+    gadget: utf8::Gadget,
+}
+
+impl<'a> Scalars<'a> {
+    fn new(s: &'a str) -> Self {
+        Self { s, gadget: utf8::Gadget::new() }
+    }
+
+    /// Get one UTF-8 scalar or one escape sequence, without coalescing.
+    fn next_raw(&mut self) -> Option<Scalar> {
+        fn is_ascii_octdigit(x: u8) -> bool {
+            (b'0'..b'8').contains(&x)
+        }
+
+        let (ix, sc) = match self.s.as_bytes() {
+            // octal escapes
+            &[b'\\', a, b, c, ..] if is_ascii_octdigit(a) && is_ascii_octdigit(b) && is_ascii_octdigit(c) => {
+                (4, Some(Scalar::Byte(u8::from_str_radix(&self.s[1..4], 8).unwrap())))
+            }
+            &[b'\\', a, b, ..] if is_ascii_octdigit(a) && is_ascii_octdigit(b) => {
+                (3, Some(Scalar::Byte(u8::from_str_radix(&self.s[1..3], 8).unwrap())))
+            }
+            &[b'\\', a, ..] if is_ascii_octdigit(a) => {
+                (2, Some(Scalar::Byte(u8::from_str_radix(&self.s[1..2], 8).unwrap())))
+            }
+            // conventional escapes
+            &[b'\\', b'a', ..] => {
+                (2, Some(Scalar::Char('\u{7}')))
+            }
+            &[b'\\', b'b', ..] => {
+                (2, Some(Scalar::Char('\u{8}')))
+            }
+            &[b'\\', b't', ..] => {
+                (2, Some(Scalar::Char('\t')))
+            }
+            &[b'\\', b'n', ..] => {
+                (2, Some(Scalar::Char('\n')))
+            }
+            &[b'\\', b'v', ..] => {
+                (2, Some(Scalar::Char('\u{b}')))
+            }
+            &[b'\\', b'f', ..] => {
+                (2, Some(Scalar::Char('\u{c}')))
+            }
+            &[b'\\', b'r', ..] => {
+                (2, Some(Scalar::Char('\r')))
+            }
+            // non-escape
+            _ => {
+                let x = self.s.chars().next();
+                (x.map_or(0, char::len_utf8), x.map(Scalar::Char))
+            }
+        };
+        self.s = &self.s[ix..];
+        sc
+    }
+
+    fn is_done(&self) -> bool {
+        self.s.is_empty() && self.gadget.is_done()
+    }
+}
+
+impl<'a> Iterator for Scalars<'a> {
+    type Item = Scalar;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(byte) = self.gadget.get() {
+                return Some(Scalar::Byte(byte));
+            }
+            match self.next_raw()? {
+                Scalar::Byte(b) => {
+                    let Some(sc) = self.gadget.put(b) else {
+                        continue
+                    };
+                    return Some(sc);
+                }
+                Scalar::Char(c) => {
+                    self.gadget.fence();
+                    return Some(Scalar::Char(c));
+                }
+            }
+        }
+    }
+}
+
+impl PartialEq<Quoted> for Quoted {
+    fn eq(&self, other: &Quoted) -> bool {
+        let mut left = self.scalars();
+        let mut right = other.scalars();
+        let b = left.by_ref().zip(right.by_ref()).all(|(l, r)| l == r);
+        left.is_done() && right.is_done() && b
+    }
+}
+
+impl PartialEq<str> for Quoted {
+    fn eq(&self, other: &str) -> bool {
+        let mut left = self.scalars();
+        let mut right = other.chars().map(Scalar::Char);
+        let b = left.by_ref().zip(right.by_ref()).all(|(l, r)| l == r);
+        left.is_done() && right.next() == None && b
+    }
+}
+
+impl Eq for Quoted {}
 
 impl Display for Quoted {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -86,7 +213,7 @@ impl Display for Quoted {
 }
 
 /// Arguments to the (deprecated) `phead` and `pfoot` annotations.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MarginStrings {
     pub left: Option<Quoted>,
     pub center: Option<Quoted>,
@@ -124,6 +251,7 @@ pub struct Color {
 
 impl Color {
     pub const BLACK: Self = Self { r: 0, g: 0, b: 0 };
+    pub(crate) const WHATEVER: Self = Self { r: 0x18, g: 0x8c, b: 0x1d };
 }
 
 impl Display for Color {
@@ -212,7 +340,7 @@ impl Display for VertAlign {
 }
 
 /// The first argument to the [`maparea`](Maparea) annotation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Link {
     pub dest: Quoted,
     pub target: Option<Quoted>,
@@ -230,7 +358,7 @@ impl Display for Link {
 }
 
 /// A cartesian coordinate pair, as used in the [`maparea`](Maparea) annotation.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Point {
     pub x: u32,
     pub y: u32,
@@ -244,7 +372,7 @@ impl Display for Di<Point> {
 }
 
 /// Highlighting of a `rect` in the [`maparea`](Maparea) annotation.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Highlight {
     pub color: Color,
     pub opacity: u32,
@@ -258,7 +386,7 @@ impl Display for Di<Highlight> {
 }
 
 /// Border format of a [`maparea`](Maparea) annotation.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Border {
     None,
     Xor,
@@ -290,7 +418,7 @@ impl Display for Border {
 }
 
 /// Shape and "effect" data associated with a [`maparea`](Maparea) annotation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Shape {
     Rect {
         origin: Point,
@@ -403,7 +531,7 @@ impl Display for Shape {
 ///         (rect 543 2859 408 183) (xor))",
 /// );
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Maparea {
     pub link: Link,
     pub comment: Quoted,
@@ -427,7 +555,7 @@ pub struct Maparea {
 ///     "(background #FFFFFF) (zoom page) (mode bw) (align center top)",
 /// );
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Annot {
     Background(Color),
     Zoom(Zoom),
@@ -481,6 +609,110 @@ impl Display for Annot {
                 Ok(())
             }
             Self::Xmp(ref xml) => write!(f, "(xmp {xml})"),
+        }
+    }
+}
+
+mod utf8 {
+    use core::mem::replace;
+    use super::Scalar;
+
+    // The FSM is copied from Andrew Gallant's bstr library, with thanks.
+
+    type State = usize;
+
+    const ACCEPT: State = 12;
+    const REJECT: State = 0;
+    const MUNCHING: State = usize::MAX;
+
+    const CLASSES: [u8; 256] = [
+       0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+       0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+       0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+       0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+       1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,
+       7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
+       8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+      10,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3, 11,6,6,6,5,8,8,8,8,8,8,8,8,8,8,8,
+    ];
+
+    const STATES_FORWARD: &'static [u8] = &[
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      12, 0, 24, 36, 60, 96, 84, 0, 0, 0, 48, 72,
+      0, 12, 0, 0, 0, 0, 0, 12, 0, 12, 0, 0,
+      0, 24, 0, 0, 0, 0, 0, 24, 0, 24, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0,
+      0, 24, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 36, 0, 36, 0, 0,
+      0, 36, 0, 0, 0, 0, 0, 36, 0, 36, 0, 0,
+      0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+
+    fn decode_step(state: &mut State, cp: &mut u32, b: u8) {
+        let class = CLASSES[b as usize];
+        if *state == ACCEPT {
+            *cp = (0xFF >> class) & (b as u32);
+        } else {
+            *cp = (b as u32 & 0b111111) | (*cp << 6);
+        }
+        *state = STATES_FORWARD[*state + class as usize] as usize;
+    }
+
+    pub struct Gadget {
+        bytes: [u8; 4],
+        count: usize,
+        state: State,
+        cp: u32,
+    }
+
+    impl Gadget {
+        pub fn new() -> Self {
+            Self {
+                bytes: [0xff; 4],
+                count: 0,
+                state: ACCEPT,
+                cp: 0,
+            }
+        }
+
+        pub fn put(&mut self, b: u8) -> Option<Scalar> {
+            self.bytes[self.count] = b;
+            self.count += 1;
+            decode_step(&mut self.state, &mut self.cp, b);
+            match self.state {
+                ACCEPT => {
+                    let c = char::from_u32(self.cp).unwrap();
+                    *self = Self::new();
+                    Some(Scalar::Char(c))
+                }
+                REJECT => {
+                    self.count -= 1;
+                    self.cp = 0;
+                    let x = replace(&mut self.bytes[0], 0xff);
+                    self.bytes.rotate_left(1);
+                    self.fence();
+                    Some(Scalar::Byte(x))
+                }
+                _ => None,
+            }
+        }
+
+        pub fn get(&mut self) -> Option<u8> {
+            (self.state == MUNCHING).then(|| {
+                self.count -= 1;
+                let x = replace(&mut self.bytes[0], 0xff);
+                self.bytes.rotate_left(1);
+                self.fence();
+                x
+            })
+        }
+
+        pub fn fence(&mut self) {
+            self.state = if self.count > 0 { MUNCHING } else { ACCEPT };
+        }
+
+        pub fn is_done(&self) -> bool {
+            self.count == 0
         }
     }
 }

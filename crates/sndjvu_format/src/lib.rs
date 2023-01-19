@@ -193,7 +193,8 @@ struct Bstr<B>(B);
 
 impl<B: AsRef<[u8]>> Debug for Bstr<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        // all copied from BurntSushi's regex-automata, with thanks
+        // This logic is copied from Andrew Gallant's bstr library,
+        // with thanks.
 
         fn len_following(byte: u8) -> Option<usize> {
             if byte <= 0x7F {
