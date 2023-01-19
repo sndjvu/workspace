@@ -87,10 +87,9 @@ macro_rules! try_advance {
 /// An error encountered while parsing.
 ///
 /// Contains a backtrace if the `backtrace` crate feature is enabled.
-#[derive(Debug)]
 pub struct Error {
     #[cfg(feature = "backtrace")]
-    _backtrace: Backtrace,
+    backtrace: Backtrace,
     _mutable: PhantomMutable,
 }
 
@@ -98,9 +97,15 @@ impl Error {
     fn placeholder() -> Self {
         Self {
             #[cfg(feature = "backtrace")]
-            _backtrace: Backtrace::capture(),
+            backtrace: Backtrace::capture(),
             _mutable: PhantomMutable,
         }
+    }
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "parsing failed\n\n{}", self.backtrace)
     }
 }
 
@@ -1458,3 +1463,11 @@ impl<'a> SplitInner<'a> {
         }
     }
 }
+
+/// Start parsing annotations from the string content of a `ANTa` or `ANTz` chunk.
+pub fn annots(s: &str) -> ParsingAnnots<'_> {
+    ParsingAnnots::new(s)
+}
+
+mod ant;
+pub use ant::ParsingAnnots;
