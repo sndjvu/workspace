@@ -64,7 +64,7 @@ fn decompress(bzz: &[u8], scratch: &mut Scratch) -> Result<Vec<u8>, super::dec::
         };
         let pos = out.len();
         out.resize(pos + shuffle.len(), 0);
-        shuffle.run(&mut out[pos..]);
+        shuffle.run(Cell::from_mut(&mut out[pos..]).as_slice_of_cells());
         start = next;
     }
 }
@@ -75,7 +75,7 @@ proptest! {
         let mut scratch = Scratch::new();
         let marker = super::enc::bwt(&input, &mut scratch);
         let mut buf = vec![0; input.len()];
-        super::dec::bwt_inv(marker, &mut buf, &mut scratch);
+        super::dec::bwt_inv(marker, Cell::from_mut(&mut buf[..]).as_slice_of_cells(), &mut scratch);
         prop_assert_eq!(input, buf);
     }
 

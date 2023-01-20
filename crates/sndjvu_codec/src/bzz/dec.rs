@@ -55,6 +55,7 @@ use super::{Speed, Symbol, Mtf, Scratch, NUM_CONTEXTS};
 use alloc::boxed::Box;
 use core::fmt::{Display, Formatter};
 use core::mem::replace;
+use core::cell::Cell;
 
 /// An error encountered while decoding a BZZ block.
 ///
@@ -95,7 +96,7 @@ fn postincrement(n: &mut u32) -> u32 {
 }
 
 // inverts the Burrows-Wheeler transform, using the same algorithm as DjVuLibre
-pub(super) fn bwt_inv(marker: u32, slice: &mut [u8], scratch: &mut Scratch) {
+pub(super) fn bwt_inv(marker: u32, slice: &[Cell<u8>], scratch: &mut Scratch) {
     let Scratch {
         // like djvulibre's posc
         ref mut shadow,
@@ -125,9 +126,9 @@ pub(super) fn bwt_inv(marker: u32, slice: &mut [u8], scratch: &mut Scratch) {
     let total = counts.iter_mut().fold(1, |acc, k| acc + replace(k, acc));
     assert_eq!(total as usize, shadow.len());
 
-    let pos = slice.iter_mut().rev().fold(0, |acc, dest| {
+    let pos = slice.iter().rev().fold(0, |acc, dest| {
         let sym = shadow[acc as usize];
-        *dest = sym;
+        dest.set(sym);
         counts[sym as usize] + ranks[acc as usize]
     });
     assert_eq!(pos, marker);
@@ -294,7 +295,7 @@ impl<'scratch> Shuffle<'scratch> {
     /// Run the inverse Burrows–Wheeler transform to compute the output block.
     ///
     /// The length of `out` must be equal to `self.len()`.
-    pub fn run(self, out: &mut [u8]) {
+    pub fn run(self, out: &[Cell<u8>]) {
         assert_eq!(out.len(), self.len(), "usage error: passed a slice of the wrong length to `Shuffle::run`");
         bwt_inv(self.marker, out, self.scratch);
     }
