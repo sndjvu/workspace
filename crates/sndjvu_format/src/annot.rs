@@ -5,6 +5,12 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuotingConvention {
+    Djvulibre,
+    Lizardtech
+}
+
 struct Di<T>(T);
 
 /// The error when attempting to construct a [`Key`] that contains invalid characters.
@@ -57,6 +63,7 @@ pub struct Quoted {
     // data is stored in *escaped* repr, without surrounding quotes
     pub(crate) data: Arc<str>,
     pub(crate) starts_at: usize,
+    quoting: QuotingConvention,
 }
 
 impl Quoted {
@@ -75,15 +82,19 @@ impl Quoted {
                 other => data.push(other),
             }
         }
-        Self { data: data.into(), starts_at: 0 }
+        Self { data: data.into(), starts_at: 0, quoting: QuotingConvention::Djvulibre }
     }
 
-    pub(crate) fn new_raw(s: &str, starts_at: usize) -> Self {
-        Self { data: s.into(), starts_at }
+    pub(crate) fn new_raw(s: &str, starts_at: usize, quoting: QuotingConvention) -> Self {
+        Self { data: s.into(), starts_at, quoting }
     }
 
     pub fn scalars(&self) -> Scalars<'_> {
-        Scalars::new(&self.data[self.starts_at..])
+        Scalars { 
+            s: &self.data[self.starts_at..],
+            quoting: self.quoting,
+            gadget: utf8::Gadget::new(),
+        }
     }
 }
 
@@ -95,18 +106,26 @@ pub enum Scalar {
 
 pub struct Scalars<'a> {
     s: &'a str,
+    quoting: QuotingConvention,
     gadget: utf8::Gadget,
 }
 
 impl<'a> Scalars<'a> {
-    fn new(s: &'a str) -> Self {
-        Self { s, gadget: utf8::Gadget::new() }
-    }
-
     /// Get one UTF-8 scalar or one escape sequence, without coalescing.
     fn next_raw(&mut self) -> Option<Scalar> {
         fn is_ascii_octdigit(x: u8) -> bool {
             (b'0'..b'8').contains(&x)
+        }
+
+        if self.quoting == QuotingConvention::Lizardtech {
+            let (ix, c) = if let &[b'\\', b'"', ..] = self.s.as_bytes() {
+                (2, Some('"'))
+            } else {
+                let x = self.s.chars().next();
+                (x.map_or(0, char::len_utf8), x)
+            };
+            self.s = &self.s[ix..];
+            return c.map(Scalar::Char);
         }
 
         let (ix, sc) = match self.s.as_bytes() {
