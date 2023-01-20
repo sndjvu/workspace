@@ -89,8 +89,8 @@ impl Quoted {
         Self { data: s.into(), starts_at, quoting }
     }
 
-    pub fn scalars(&self) -> Scalars<'_> {
-        Scalars { 
+    pub fn scalars(&self) -> QuotedScalars<'_> {
+        QuotedScalars {
             s: &self.data[self.starts_at..],
             quoting: self.quoting,
             gadget: utf8::Gadget::new(),
@@ -104,13 +104,13 @@ pub enum Scalar {
     Byte(u8),
 }
 
-pub struct Scalars<'a> {
+pub struct QuotedScalars<'a> {
     s: &'a str,
     quoting: QuotingConvention,
     gadget: utf8::Gadget,
 }
 
-impl<'a> Scalars<'a> {
+impl<'a> QuotedScalars<'a> {
     /// Get one UTF-8 scalar or one escape sequence, without coalescing.
     fn next_raw(&mut self) -> Option<Scalar> {
         fn is_ascii_octdigit(x: u8) -> bool {
@@ -176,7 +176,7 @@ impl<'a> Scalars<'a> {
     }
 }
 
-impl<'a> Iterator for Scalars<'a> {
+impl<'a> Iterator for QuotedScalars<'a> {
     type Item = Scalar;
 
     fn next(&mut self) -> Option<Self::Item> {
