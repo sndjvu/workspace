@@ -12,12 +12,18 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+use core::cell::Cell;
+
 /// Represents the outcome of a coding operation, if no error was encountered.
 pub enum Step<L, R> {
     /// Enough bytes were available and the coding operation completed successfully.
     Complete(L),
     /// Not enough input bytes were provided to complete the coding operation.
     Incomplete(R),
+}
+
+pub fn cells<T>(xs: &mut [T]) -> &[Cell<T>] {
+    Cell::from_mut(xs).as_slice_of_cells()
 }
 
 pub(crate) mod zp;

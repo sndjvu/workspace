@@ -1,9 +1,8 @@
-use crate::Step::*;
+use crate::{Step::*, cells};
 use super::Scratch;
 use proptest::prelude::*;
 use std::vec::Vec;
 use std::{vec, format};
-use std::cell::Cell;
 
 fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
     use std::mem::ManuallyDrop;
@@ -11,8 +10,7 @@ fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
 
     let mut out = vec![0; 4096];
     let mut pos = 0;
-    let out_slice = Cell::from_mut(&mut out[pos..]).as_slice_of_cells();
-    let mut start = ManuallyDrop::new(start(out_slice));
+    let mut start = ManuallyDrop::new(start(cells(&mut out[pos..])));
     for chunk in data.chunks(100) {
         let mut block = loop {
             start = match ManuallyDrop::into_inner(start).step(chunk, scratch) {
@@ -20,8 +18,7 @@ fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
                 Incomplete((off, save)) => {
                     pos += off;
                     out.resize(pos + 4096, 0);
-                    let out_slice = Cell::from_mut(&mut out[pos..]).as_slice_of_cells();
-                    ManuallyDrop::new(save.resume(out_slice))
+                    ManuallyDrop::new(save.resume(cells(&mut out[pos..])))
                 }
             };
         };
@@ -31,8 +28,7 @@ fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
                 Incomplete((off, save)) => {
                     pos += off;
                     out.resize(pos + 4096, 0);
-                    let out_slice = Cell::from_mut(&mut out[pos..]).as_slice_of_cells();
-                    ManuallyDrop::new(save.resume(out_slice))
+                    ManuallyDrop::new(save.resume(cells(&mut out[pos..])))
                 }
             };
         };
@@ -64,7 +60,7 @@ fn decompress(bzz: &[u8], scratch: &mut Scratch) -> Result<Vec<u8>, super::dec::
         };
         let pos = out.len();
         out.resize(pos + shuffle.len(), 0);
-        shuffle.run(Cell::from_mut(&mut out[pos..]).as_slice_of_cells());
+        shuffle.run(cells(&mut out[pos..]));
         start = next;
     }
 }
@@ -75,7 +71,7 @@ proptest! {
         let mut scratch = Scratch::new();
         let marker = super::enc::bwt(&input, &mut scratch);
         let mut buf = vec![0; input.len()];
-        super::dec::bwt_inv(marker, Cell::from_mut(&mut buf[..]).as_slice_of_cells(), &mut scratch);
+        super::dec::bwt_inv(marker, cells(&mut buf[..]), &mut scratch);
         prop_assert_eq!(input, buf);
     }
 
