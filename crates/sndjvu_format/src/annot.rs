@@ -23,7 +23,7 @@ impl Display for KeyError {
 impl std::error::Error for KeyError {}
 
 /// A string key occurring in the `metadata` annotation.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Key(Arc<str>);
 
 impl Key {
