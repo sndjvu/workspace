@@ -920,7 +920,7 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
 ///
 /// The serializer makes many small writes, so make sure that the writer is buffered.
 #[cfg(feature = "std")]
-pub fn to_writer<T: Serialize, W: std::io::Write>(doc: &T, mut writer: W) -> Result<(), Error> {
+pub fn to_writer<T: Serialize + ?Sized, W: std::io::Write>(doc: &T, mut writer: W) -> Result<(), Error> {
     let serializer = Serializer::first_pass();
     let okay = doc.serialize(serializer)?;
     let serializer = Serializer::second_pass(okay, ErasedOutMut(&mut writer as _));
@@ -929,7 +929,7 @@ pub fn to_writer<T: Serialize, W: std::io::Write>(doc: &T, mut writer: W) -> Res
 }
 
 /// Serialize a document into a buffer of bytes.
-pub fn to_vec<T: Serialize>(doc: &T) -> Result<Vec<u8>, Error> {
+pub fn to_vec<T: Serialize + ?Sized>(doc: &T) -> Result<Vec<u8>, Error> {
     let serializer = Serializer::first_pass();
     let okay = doc.serialize(serializer)?;
     let mut buf = VecOut(Vec::with_capacity(okay.total as usize));
