@@ -6,14 +6,14 @@ use alloc::vec::Vec;
 #[derive(Clone, Debug)]
 pub struct ParsingAnnots<'a> {
     full: &'a str,
-    quoting: QuotingConvention,
+    escaping: Escaping,
     pos: usize,
 }
 
 #[derive(Clone)]
 struct Rest<'a> {
     full: &'a str,
-    quoting: QuotingConvention,
+    escaping: Escaping,
     pos: usize,
 }
 
@@ -57,7 +57,7 @@ impl<'a> Rest<'a> {
                 let mut end = None;
                 for (i, c) in rest.char_indices() {
                     if i > 0 && c == '"' && count % 2 == 0 &&
-                        (self.quoting == QuotingConvention::Djvulibre || count == 0)
+                        (self.escaping == Escaping::Djvulibre || count == 0)
                     {
                         end = Some(i);
                         break;
@@ -70,7 +70,7 @@ impl<'a> Rest<'a> {
                 let Some(i) = end else {
                     return Err(Error::placeholder())
                 };
-                (Token::Quoted(Quoted::new_raw(&rest[1..i], 0, self.quoting)), 1 + i + 1)
+                (Token::Quoted(Quoted::new_raw(&rest[1..i], 0, self.escaping)), 1 + i + 1)
             }
             a if a.is_ascii_alphabetic() => {
                 let i = rest.char_indices()
@@ -456,12 +456,12 @@ impl<'a> Rest<'a> {
 }
 
 impl<'a> ParsingAnnots<'a> {
-    pub(crate) fn new(full: &'a str, quoting: QuotingConvention) -> Self {
-        Self { full, quoting, pos: 0 }
+    pub(crate) fn new(full: &'a str, escaping: Escaping) -> Self {
+        Self { full, escaping, pos: 0 }
     }
 
     fn rest(&self) -> Rest<'a> {
-        Rest { full: &self.full[self.pos..], quoting: self.quoting, pos: 0 }
+        Rest { full: &self.full[self.pos..], escaping: self.escaping, pos: 0 }
     }
 
     pub fn parse_next(&mut self) -> Result<Option<Annot>, Error> {
@@ -489,7 +489,7 @@ mod tests {
     #[test]
     fn tokenize() -> Result<(), Error> {
         let full = "(foo bar \"baz\\0\\f\" #ABC123 175)";
-        let mut rest = Rest { full, pos: 0, quoting: QuotingConvention::Djvulibre };
+        let mut rest = Rest { full, pos: 0, escaping: Escaping::Djvulibre };
         let mut tokens = alloc::vec![];
         while let Some(tok) = rest.token()? {
             tokens.push(tok);
@@ -515,7 +515,7 @@ mod tests {
                     (maparea \"http://lizardtech.com/\" \"Here is a rectangular hyperlink\" \
                     (rect 543 2859 408 183) (xor))";
         let mut annots = alloc::vec![];
-        let mut parsing = ParsingAnnots::new(full, QuotingConvention::Djvulibre);
+        let mut parsing = ParsingAnnots::new(full, Escaping::Djvulibre);
         while let Some(annot) = parsing.parse_next()? {
             annots.push(annot);
         }

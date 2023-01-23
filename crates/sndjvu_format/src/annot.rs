@@ -6,7 +6,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum QuotingConvention {
+pub(crate) enum Escaping {
     Djvulibre,
     Lizardtech
 }
@@ -63,7 +63,7 @@ pub struct Quoted {
     // data is stored in *escaped* repr, without surrounding quotes
     pub(crate) data: Arc<str>,
     pub(crate) starts_at: usize,
-    quoting: QuotingConvention,
+    pub(crate) escaping: Escaping,
 }
 
 impl Quoted {
@@ -82,17 +82,17 @@ impl Quoted {
                 other => data.push(other),
             }
         }
-        Self { data: data.into(), starts_at: 0, quoting: QuotingConvention::Djvulibre }
+        Self { data: data.into(), starts_at: 0, escaping: Escaping::Djvulibre }
     }
 
-    pub(crate) fn new_raw(s: &str, starts_at: usize, quoting: QuotingConvention) -> Self {
-        Self { data: s.into(), starts_at, quoting }
+    pub(crate) fn new_raw(s: &str, starts_at: usize, escaping: Escaping) -> Self {
+        Self { data: s.into(), starts_at, escaping }
     }
 
     pub fn scalars(&self) -> QuotedScalars<'_> {
         QuotedScalars {
             s: &self.data[self.starts_at..],
-            quoting: self.quoting,
+            escaping: self.escaping,
             gadget: utf8::Gadget::new(),
         }
     }
@@ -106,7 +106,7 @@ pub enum Scalar {
 
 pub struct QuotedScalars<'a> {
     s: &'a str,
-    quoting: QuotingConvention,
+    escaping: Escaping,
     gadget: utf8::Gadget,
 }
 
@@ -117,7 +117,7 @@ impl<'a> QuotedScalars<'a> {
             (b'0'..b'8').contains(&x)
         }
 
-        if self.quoting == QuotingConvention::Lizardtech {
+        if self.escaping == Escaping::Lizardtech {
             let (ix, c) = if let &[b'\\', b'"', ..] = self.s.as_bytes() {
                 (2, Some('"'))
             } else {

@@ -1466,11 +1466,11 @@ impl<'a> SplitInner<'a> {
 
 /// Start parsing annotations from the string content of a `ANTa` or `ANTz` chunk.
 pub fn annots(s: &str) -> ParsingAnnots<'_> {
-    ParsingAnnots::new(s, crate::annot::QuotingConvention::Djvulibre)
+    ParsingAnnots::new(s, crate::annot::Escaping::Djvulibre)
 }
 
 pub fn annots_lizardtech(s: &str) -> ParsingAnnots<'_> {
-    ParsingAnnots::new(s, crate::annot::QuotingConvention::Lizardtech)
+    ParsingAnnots::new(s, crate::annot::Escaping::Lizardtech)
 }
 
 mod ant;
