@@ -1,4 +1,4 @@
-pub fn slice_split_array<const N: usize, T>(slice: &[T]) -> Option<(&[T; N], &[T])> {
+pub(crate) fn slice_split_array<const N: usize, T>(slice: &[T]) -> Option<(&[T; N], &[T])> {
     // Implementation lightly modified from core::slice::split_array_ref.
     if slice.len() < N {
         return None;
@@ -9,7 +9,7 @@ pub fn slice_split_array<const N: usize, T>(slice: &[T]) -> Option<(&[T; N], &[T
     Some((array, b))
 }
 
-pub fn slice_as_arrays<const N: usize, T>(slice: &[T]) -> (&[[T; N]], &[T]) {
+pub(crate) fn slice_as_arrays<const N: usize, T>(slice: &[T]) -> (&[[T; N]], &[T]) {
     // Implementation copied from core::slice::as_chunks.
     assert_ne!(N, 0);
     let len = slice.len() / N;
@@ -25,7 +25,7 @@ pub fn slice_as_arrays<const N: usize, T>(slice: &[T]) -> (&[[T; N]], &[T]) {
     (array_slice, remainder)
 }
 
-pub fn arrays_as_slice<const N: usize, T>(arrays: &[[T; N]]) -> &[T] {
+pub(crate) fn arrays_as_slice<const N: usize, T>(arrays: &[[T; N]]) -> &[T] {
     let len = arrays.len() * N;
     // SAFETY `arrays` points to the appropriate number of T (arrays don't affect layout)
     unsafe {
