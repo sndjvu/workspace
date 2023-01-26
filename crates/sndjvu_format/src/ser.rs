@@ -142,7 +142,7 @@ macro_rules! tame {
 }
 
 trait Out {
-    fn put(&mut self, b: &[u8]) -> Result<(), Error>;
+    fn put(&mut self, b: &[&[u8]]) -> Result<(), Error>;
 }
 
 struct ErasedOutMut<'wr>(&'wr mut (dyn Out + 'wr));
@@ -154,7 +154,7 @@ impl<'wr> Debug for ErasedOutMut<'wr> {
 }
 
 impl<'wr> Out for ErasedOutMut<'wr> {
-    fn put(&mut self, data: &[u8]) -> Result<(), Error> {
+    fn put(&mut self, data: &[&[u8]]) -> Result<(), Error> {
         self.0.put(data)
     }
 }
@@ -163,26 +163,27 @@ impl<'wr> Out for ErasedOutMut<'wr> {
 struct VecOut(Vec<u8>);
 
 impl Out for VecOut {
-    fn put(&mut self, b: &[u8]) -> Result<(), Error> {
-        self.0.extend_from_slice(b);
+    fn put(&mut self, data: &[&[u8]]) -> Result<(), Error> {
+        for slice in data {
+            self.0.extend_from_slice(slice);
+        }
         Ok(())
     }
 }
 
 #[cfg(feature = "std")]
 impl<W: std::io::Write> Out for W {
-    fn put(&mut self, b: &[u8]) -> Result<(), Error> {
-        self.write_all(b).map_err(Error::io)?;
+    fn put(&mut self, data: &[&[u8]]) -> Result<(), Error> {
+        for slice in data {
+            self.write_all(slice).map_err(Error::io)?;
+        }
         Ok(())
     }
 }
 
 macro_rules! out {
     ( $o:expr ; $( $b:expr ),* $( , )? ) => {
-        (|| -> Result<(), Error> {
-            $( $o.put($b.as_ref())?; )*
-            Ok(())
-        })()
+        $o.put(&[$( $b.as_ref() ),*])
     };
 }
 
@@ -322,9 +323,9 @@ struct Second<'wr> {
 }
 
 impl<'wr> Second<'wr> {
-    fn put(&mut self, b: &[u8]) -> Result<(), Error> {
-        self.out.put(b)?;
-        let len: u32 = b.len().try_into().map_err(|_| OverflowError)?;
+    fn put(&mut self, data: &[&[u8]]) -> Result<(), Error> {
+        self.out.put(data)?;
+        let len: u32 = data.iter().map(|x| x.len()).sum::<usize>().try_into().map_err(|_| OverflowError)?;
         self.running = checked_sum!(self.running, len)?;
         Ok(())
     }
@@ -337,14 +338,14 @@ enum Pass<'wr> {
 }
 
 impl<'wr> Pass<'wr> {
-    fn put(&mut self, b: &[u8]) -> Result<(), Error> {
+    fn put(&mut self, data: &[&[u8]]) -> Result<(), Error> {
         match *self {
             Pass::First(ref mut first) => {
                 // in practice it seems we only use this to write chunk data,
                 // which means calling it without Cur::InChunk is a bug
                 // the behavior is to forward to the underlying Out and also
                 // increment the chunk counter
-                let len: u32 = b.len().try_into().map_err(|_| OverflowError)?;
+                let len: u32 = data.iter().map(|x| x.len()).sum::<usize>().try_into().map_err(|_| OverflowError)?;
                 match first.cur {
                     Cur::InChunk { ref mut chunk, .. } => {
                         *chunk = checked_sum!(*chunk, len)?;
@@ -352,7 +353,7 @@ impl<'wr> Pass<'wr> {
                     _ => unreachable!(),
                 }
             }
-            Pass::Second(ref mut second) => second.put(b)?,
+            Pass::Second(ref mut second) => second.put(data)?,
         }
         Ok(())
     }
