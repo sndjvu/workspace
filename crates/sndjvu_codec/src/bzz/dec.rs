@@ -17,7 +17,7 @@
 //! ## Example decoding loop
 //!
 //! ```ignore
-//! # use sndjvu_codec::bzz::{Scratch, dec::*};
+//! # use sndjvu_codec::bzz::{Scratch, cells, dec::*};
 //! fn decompress(bzz: &[u8], scratch: &mut Scratch) -> Result<Vec<u8>, Error> {
 //!     let mut out = vec![];
 //!     let mut start = start(bzz);
@@ -37,7 +37,7 @@
 //!         };
 //!         let pos = out.len();
 //!         out.resize(pos + shuffle.len(), 0);
-//!         shuffle.run(&mut out[pos..]);
+//!         shuffle.run(cells(&mut out[pos..]));
 //!         start = next;
 //!     }
 //! }
