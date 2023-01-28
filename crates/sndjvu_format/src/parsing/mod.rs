@@ -1180,7 +1180,7 @@ impl<'a> SplitOuter<'a> {
     }
 
     fn set_distance_to_end(&mut self, len: u32) -> Pos {
-        let end_pos = self.pos() + len;
+        let end_pos = self.pos().saturating_add(len);
         self.end_pos = Some(end_pos);
         end_pos
     }
@@ -1254,6 +1254,9 @@ impl<'a> SplitOuter<'a> {
             return Err(Error::placeholder());
         }
         if !is_potential_chunk_id(kind) {
+            return Err(Error::placeholder());
+        }
+        if len < 4 {
             return Err(Error::placeholder());
         }
         Ok(ProgressInternal::Advanced((kind, len - 4)))
