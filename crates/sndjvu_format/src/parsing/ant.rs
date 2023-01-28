@@ -27,6 +27,7 @@ fn split_for_token(raw: &str) -> (usize, Option<char>, &str) {
 impl<'a> Rest<'a> {
     fn token(&mut self) -> Result<Option<Token<'a>>, Error> {
         let (off, Some(c), rest) = split_for_token(&self.full[self.pos..]) else {
+            self.pos = self.full.len();
             return Ok(None)
         };
         let (tok, i) = match c {
@@ -70,7 +71,7 @@ impl<'a> Rest<'a> {
                 let Some(i) = end else {
                     return Err(Error::placeholder())
                 };
-                (Token::Quoted(Quoted::new_raw(&rest[1..i], 0, self.escaping)), 1 + i + 1)
+                (Token::Quoted(Quoted::new_raw(&rest[1..i], 0, self.escaping)), i + 1)
             }
             a if a.is_ascii_alphabetic() => {
                 let i = rest.char_indices()
@@ -174,7 +175,10 @@ impl<'a> Rest<'a> {
                         && w.len() > 1
                         && w[1..].chars().all(|c| c.is_ascii_digit()) => {
                         let n = &w[1..];
-                        Zoom::D(u32::from_str_radix(n, 10).unwrap())
+                        let Ok(n) = u32::from_str_radix(n, 10) else {
+                            return Err(Error::placeholder())
+                        };
+                        Zoom::D(n)
                     }
                     _ => return Err(Error::placeholder()),
                 };
