@@ -105,7 +105,11 @@ impl Error {
 
 impl Debug for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "parsing failed\n\n{}", self.backtrace)
+        write!(f, "parsing failed")?;
+        #[cfg(feature = "backtrace")] {
+            write!(f, "\n\n{}", self.backtrace)?;
+        }
+        Ok(())
     }
 }
 
