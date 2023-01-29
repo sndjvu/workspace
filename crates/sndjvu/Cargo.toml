@@ -8,5 +8,5 @@ edition = "2021"
 std = ["sndjvu_format/std", "sndjvu_codec/std"]
 
 [dependencies]
-sndjvu_format = { version = "0.1.0", path = "../sndjvu_format" }
-sndjvu_codec = { version = "0.0.0", path = "../sndjvu_codec", features = ["djvu"] }
+sndjvu_format = { version = "*", path = "../sndjvu_format" }
+sndjvu_codec = { version = "*", path = "../sndjvu_codec", features = ["djvu"] }
