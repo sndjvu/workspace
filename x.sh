@@ -30,6 +30,8 @@ ci() {
 		return 1
 	fi
 
+	export CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+
 	cargo test --workspace --all-features --no-run --profile ci
 	cargo test --workspace --all-features --profile ci
 
