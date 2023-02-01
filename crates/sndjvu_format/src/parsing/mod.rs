@@ -1100,12 +1100,18 @@ impl ComponentP {
         self.pos
     }
 
-    pub fn is_end(&self) -> bool {
-        self.pos == self.end_pos
+    pub fn is_end(&self) -> Option<bool> {
+        if self.pos > self.end_pos {
+            return None;
+        }
+        Some(self.pos == self.end_pos)
     }
 
     pub fn feed<'a>(&self, data: &'a [u8]) -> Result<Progress<ComponentHead<'a>, ()>, Error> {
-        if self.is_end() {
+        let Some(is_end) = self.is_end() else {
+            return Err(Error::placeholder());
+        };
+        if is_end {
             return Ok(Progress::End(()));
         }
         let mut s = split_outer(data, self.pos, Some(self.end_pos));
@@ -1238,6 +1244,9 @@ impl<'a> SplitOuter<'a> {
             return Err(Error::placeholder());
         }
         if !is_potential_chunk_id(kind) {
+            return Err(Error::placeholder());
+        }
+        if len < 4 {
             return Err(Error::placeholder());
         }
         Ok(ProgressInternal::Advanced((kind, len - 4)))
