@@ -141,41 +141,32 @@ macro_rules! tame {
     };
 }
 
-trait Out {
-    fn put(&mut self, b: &[&[u8]]) -> Result<(), Error>;
+enum ErasedOutMut<'wr> {
+    Vec(&'wr mut Vec<u8>),
+    #[cfg(feature = "std")]
+    Writer(&'wr mut (dyn std::io::Write + 'wr)),
 }
-
-struct ErasedOutMut<'wr>(&'wr mut (dyn Out + 'wr));
 
 impl<'wr> Debug for ErasedOutMut<'wr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "<omitted>")
+        write!(f, "...")
     }
 }
 
-impl<'wr> Out for ErasedOutMut<'wr> {
+impl<'wr> ErasedOutMut<'wr> {
     fn put(&mut self, data: &[&[u8]]) -> Result<(), Error> {
-        self.0.put(data)
-    }
-}
-
-#[derive(Debug)]
-struct VecOut(Vec<u8>);
-
-impl Out for VecOut {
-    fn put(&mut self, data: &[&[u8]]) -> Result<(), Error> {
-        for slice in data {
-            self.0.extend_from_slice(slice);
-        }
-        Ok(())
-    }
-}
-
-#[cfg(feature = "std")]
-impl<W: std::io::Write> Out for W {
-    fn put(&mut self, data: &[&[u8]]) -> Result<(), Error> {
-        for slice in data {
-            self.write_all(slice).map_err(Error::io)?;
+        match *self {
+            Self::Vec(ref mut vec) => {
+                for slice in data {
+                    vec.extend_from_slice(slice);
+                }
+            }
+            #[cfg(feature = "std")]
+            Self::Writer(ref mut writer) => {
+                for slice in data {
+                    writer.write_all(slice).map_err(Error::io)?;
+                }
+            }
         }
         Ok(())
     }
@@ -921,10 +912,10 @@ impl<'co, 'wr: 'co> SerializeThumbnails<'co, 'wr> {
 ///
 /// The serializer makes many small writes, so make sure that the writer is buffered.
 #[cfg(feature = "std")]
-pub fn to_writer<T: Serialize + ?Sized, W: std::io::Write>(doc: &T, mut writer: W) -> Result<(), Error> {
+pub fn to_writer<T: Serialize + ?Sized>(doc: &T, writer: &mut (dyn std::io::Write + '_)) -> Result<(), Error> {
     let serializer = Serializer::first_pass();
     let okay = doc.serialize(serializer)?;
-    let serializer = Serializer::second_pass(okay, ErasedOutMut(&mut writer as _));
+    let serializer = Serializer::second_pass(okay, ErasedOutMut::Writer(writer));
     let _okay = doc.serialize(serializer)?;
     Ok(())
 }
@@ -933,10 +924,10 @@ pub fn to_writer<T: Serialize + ?Sized, W: std::io::Write>(doc: &T, mut writer: 
 pub fn to_vec<T: Serialize + ?Sized>(doc: &T) -> Result<Vec<u8>, Error> {
     let serializer = Serializer::first_pass();
     let okay = doc.serialize(serializer)?;
-    let mut buf = VecOut(Vec::with_capacity(okay.total as usize));
-    let serializer = Serializer::second_pass(okay, ErasedOutMut(&mut buf as _));
+    let mut buf = Vec::with_capacity(okay.total as usize);
+    let serializer = Serializer::second_pass(okay, ErasedOutMut::Vec(&mut buf));
     let _okay = doc.serialize(serializer)?;
-    Ok(buf.0)
+    Ok(buf)
 }
 
 #[derive(Clone, Copy, Debug)]
