@@ -5,7 +5,19 @@ set -o errexit -o nounset
 git config user.name "Cole Miller"
 git config user.email "m@cole-miller.net"
 
+export CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+
+check() {
+	cargo test --workspace --all-features --no-run --profile ci
+	cargo test --workspace --all-features --profile ci
+}
+
 www() {
+	if test "$GITHUB_ACTIONS" != "true"; then
+		echo "fatal: not running on GitHub Actions"
+		return 1
+	fi
+
 	RUSTDOCFLAGS='--cfg sndjvu_doc_cfg' \
 		cargo doc --workspace --all-features --no-deps --target x86_64-unknown-linux-gnu
 	mkdir www/rustdoc
@@ -25,16 +37,7 @@ www() {
 }
 
 ci() {
-	if test "$GITHUB_ACTIONS" != "true"; then
-		echo "fatal: not running on GitHub Actions"
-		return 1
-	fi
-
-	export CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
-
-	cargo test --workspace --all-features --no-run --profile ci
-	cargo test --workspace --all-features --profile ci
-
+	check
 	www
 }
 
