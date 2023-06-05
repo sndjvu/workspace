@@ -19,11 +19,6 @@ check() {
 }
 
 www() {
-	if test "$GITHUB_ACTIONS" != "true"; then
-		echo "fatal: not running on GitHub Actions"
-		return 1
-	fi
-
 	RUSTDOCFLAGS='--cfg sndjvu_doc_cfg' \
 		cargo doc --workspace --all-features --no-deps --target x86_64-unknown-linux-gnu
 	mkdir www/rustdoc
@@ -45,7 +40,12 @@ www() {
 	git push -f origin gh-pages
 }
 
-ci() {
+gha() {
+	if test "$GITHUB_ACTIONS" != "true"; then
+		echo "fatal: not running on GitHub Actions"
+		return 1
+	fi
+
 	deps
 	check
 	www

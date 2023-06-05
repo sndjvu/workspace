@@ -21,4 +21,4 @@ jobs:
         with:
           toolchain: nightly-2023-01-31
       - uses: Swatinem/rust-cache@v2
-      - run: ./x.sh ci
+      - run: ./x.sh gha
