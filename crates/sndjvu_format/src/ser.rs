@@ -39,7 +39,7 @@
 use crate::{
     ComponentKind, DirmVersion, FgbzVersion, InfoVersion,
     Iw44ColorSpace, Iw44Version, PageRotation, PaletteEntry,
-    PhantomMutable, TxtVersion, Zone, ZoneKind,
+    TxtVersion, Zone, ZoneKind,
 };
 use core::fmt::{Debug, Display, Formatter};
 use core::mem::replace;
@@ -79,8 +79,12 @@ pub struct Error {
     kind: ErrorKind,
     #[cfg(feature = "backtrace")]
     _backtrace: Backtrace,
-    _mutable: PhantomMutable,
 }
+
+// Backtrace before Rust 1.73.0 wasn't RefUnwindSafe. Explicitly implement it for Error
+// to avoid either increasing MSRV or having the properties of this type depend on the Rust
+// version.
+impl core::panic::RefUnwindSafe for Error {}
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -103,7 +107,6 @@ impl Error {
             kind: ErrorKind::Io(e),
             #[cfg(feature = "backtrace")]
             _backtrace: Backtrace::capture(),
-            _mutable: PhantomMutable,
         }
     }
 }
@@ -114,7 +117,6 @@ impl From<OverflowError> for Error {
             kind: ErrorKind::Overflow,
             #[cfg(feature = "backtrace")]
             _backtrace: Backtrace::capture(),
-            _mutable: PhantomMutable,
         }
     }
 }

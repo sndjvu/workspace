@@ -43,7 +43,6 @@ extern crate alloc;
 extern crate std;
 
 use core::fmt::{Debug, Display, Formatter};
-use core::marker::PhantomData;
 
 /// Version information associated with the `TXTa` and `TXTz` chunks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -419,11 +418,6 @@ impl Zone {
         u32::from_be_bytes([0, b1, b2, b3])
     }
 }
-
-type PhantomMutable = PhantomData<dyn core::any::Any + Send + Sync + core::marker::Unpin>;
-
-#[allow(non_upper_case_globals)]
-const PhantomMutable: PhantomMutable = PhantomData;
 
 /// Uninhabited type, used to customize the [`Progress`](parsing::Progress) type.
 ///

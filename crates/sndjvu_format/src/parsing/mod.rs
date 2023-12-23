@@ -33,7 +33,7 @@
 //!   possible outcome only for [`ComponentP::feed`] and [`ElementP::feed`]
 
 use crate::{
-    Bstr, PaletteIndex, PhantomMutable, PageRotation, InfoVersion,
+    Bstr, PaletteIndex, PageRotation, InfoVersion,
     TxtVersion, Zone, Iw44ColorSpace, Iw44Version, FgbzVersion,
     PaletteEntry, DirmVersion, ComponentKind, Never,
 };
@@ -90,15 +90,18 @@ macro_rules! try_advance {
 pub struct Error {
     #[cfg(feature = "backtrace")]
     backtrace: Backtrace,
-    _mutable: PhantomMutable,
 }
+
+// Backtrace before Rust 1.73.0 wasn't RefUnwindSafe. Explicitly implement it for Error
+// to avoid either increasing MSRV or having the properties of this type depend on the Rust
+// version.
+impl core::panic::RefUnwindSafe for Error {}
 
 impl Error {
     fn placeholder() -> Self {
         Self {
             #[cfg(feature = "backtrace")]
             backtrace: Backtrace::capture(),
-            _mutable: PhantomMutable,
         }
     }
 }
