@@ -16,8 +16,8 @@
 //!
 //! ## Example decoding loop
 //!
-//! ```ignore
-//! # use sndjvu_codec::bzz::{Scratch, cells, dec::*};
+//! ```
+//! # use sndjvu_codec::{cells, Step::*, bzz::{Scratch, dec::*}};
 //! fn decompress(bzz: &[u8], scratch: &mut Scratch) -> Result<Vec<u8>, Error> {
 //!     let mut out = vec![];
 //!     let mut start = start(bzz);
@@ -42,12 +42,6 @@
 //!     }
 //! }
 //! ```
-//!
-//! Or at least, that's the ideal usage. Unfortunately, a rustc bug currently causes the borrow
-//! check to incorrectly reject this code, see [issue 70919](https://github.com/rust-lang/rust/issues/70919).
-//! You can work around this obstacle by wrapping `start`, `block`, and `next` in [`core::mem::ManuallyDrop`]
-//! and calling `ManuallyDrop::into_inner` at the appropriate points (thanks to Frank Steffahn for
-//! suggesting this trick).
 
 use crate::Step::{self, *};
 use crate::zp;

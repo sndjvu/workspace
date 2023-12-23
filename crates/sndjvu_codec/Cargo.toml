@@ -3,6 +3,7 @@ name = "sndjvu_codec"
 version = "0.0.0"
 
 edition = "2021"
+rust-version = "1.70.0" # fix for rust-lang/rust#70919
 
 [features]
 std = []

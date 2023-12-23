@@ -5,57 +5,55 @@ use std::vec::Vec;
 use std::{vec, format};
 
 fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
-    use std::mem::ManuallyDrop;
     use super::enc::*;
 
     let mut out = vec![0; 4096];
     let mut pos = 0;
-    let mut start = ManuallyDrop::new(start(cells(&mut out[pos..])));
+    let mut start = start(cells(&mut out[pos..]));
     for chunk in data.chunks(100) {
         let mut block = loop {
-            start = match ManuallyDrop::into_inner(start).step(chunk, scratch) {
-                Complete(enc) => break ManuallyDrop::new(enc),
+            start = match start.step(chunk, scratch) {
+                Complete(enc) => break enc,
                 Incomplete((off, save)) => {
                     pos += off;
                     out.resize(pos + 4096, 0);
-                    ManuallyDrop::new(save.resume(cells(&mut out[pos..])))
+                    save.resume(cells(&mut out[pos..]))
                 }
             };
         };
         start = loop {
-            block = match ManuallyDrop::into_inner(block).step() {
-                Complete(enc) => break ManuallyDrop::new(enc),
+            block = match block.step() {
+                Complete(enc) => break enc,
                 Incomplete((off, save)) => {
                     pos += off;
                     out.resize(pos + 4096, 0);
-                    ManuallyDrop::new(save.resume(cells(&mut out[pos..])))
+                    save.resume(cells(&mut out[pos..]))
                 }
             };
         };
     }
-    let off = ManuallyDrop::into_inner(start).flush();
+    let off = start.flush();
     out.truncate(pos + off);
     out
 }
 
 fn decompress(bzz: &[u8], scratch: &mut Scratch) -> Result<Vec<u8>, super::dec::Error> {
-    use std::mem::ManuallyDrop;
     use super::dec::*;
 
     let mut out = vec![];
-    let mut start = ManuallyDrop::new(start(bzz));
+    let mut start = start(bzz);
     loop {
         let mut block = loop {
-            start = match ManuallyDrop::into_inner(start).step(scratch) {
+            start = match start.step(scratch) {
                 Complete(None) => return Ok(out),
-                Complete(Some(enc)) => break ManuallyDrop::new(enc),
-                Incomplete(save) => ManuallyDrop::new(save.seal()),
+                Complete(Some(enc)) => break enc,
+                Incomplete(save) => save.seal(),
             };
         };
         let (shuffle, next) = loop {
-            block = match ManuallyDrop::into_inner(block).step()? {
-                Complete((shuf, enc)) => break (shuf, ManuallyDrop::new(enc)),
-                Incomplete(save) => ManuallyDrop::new(save.seal()),
+            block = match block.step()? {
+                Complete((shuf, enc)) => break (shuf, enc),
+                Incomplete(save) => save.seal(),
             };
         };
         let pos = out.len();
