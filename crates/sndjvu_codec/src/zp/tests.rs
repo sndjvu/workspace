@@ -1,7 +1,7 @@
 use proptest::prelude::*;
 
 use super::{Context, Encoder, Decoder};
-use crate::{Step::*, cells};
+use crate::Step::*;
 
 const NUM_CONTEXTS: usize = 3;
 
@@ -26,7 +26,7 @@ proptest! {
 
         let mut contexts = [Context::NEW; NUM_CONTEXTS];
         let mut buf = vec![0xff; 8 * records.len()]; // XXX
-        let mut encoder = match Encoder::new(cells(&mut buf[..])).provision(records.len() as u32) {
+        let mut encoder = match Encoder::new(&mut buf[..]).provision(records.len() as u32) {
             Complete(enc) => enc,
             Incomplete(_) => panic!(),
         };

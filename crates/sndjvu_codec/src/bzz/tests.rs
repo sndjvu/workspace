@@ -1,4 +1,4 @@
-use crate::{Step::*, cells};
+use crate::Step::*;
 use super::Scratch;
 use proptest::prelude::*;
 use std::vec::Vec;
@@ -9,7 +9,7 @@ fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
 
     let mut out = vec![0; 4096];
     let mut pos = 0;
-    let mut start = start(cells(&mut out[pos..]));
+    let mut start = start(&mut out[pos..]);
     for chunk in data.chunks(100) {
         let mut block = loop {
             start = match start.step(chunk, scratch) {
@@ -17,7 +17,7 @@ fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
                 Incomplete((off, save)) => {
                     pos += off;
                     out.resize(pos + 4096, 0);
-                    save.resume(cells(&mut out[pos..]))
+                    save.resume(&mut out[pos..])
                 }
             };
         };
@@ -27,7 +27,7 @@ fn compress(data: &[u8], scratch: &mut Scratch) -> Vec<u8> {
                 Incomplete((off, save)) => {
                     pos += off;
                     out.resize(pos + 4096, 0);
-                    save.resume(cells(&mut out[pos..]))
+                    save.resume(&mut out[pos..])
                 }
             };
         };
@@ -58,7 +58,7 @@ fn decompress(bzz: &[u8], scratch: &mut Scratch) -> Result<Vec<u8>, super::dec::
         };
         let pos = out.len();
         out.resize(pos + shuffle.len(), 0);
-        shuffle.run(cells(&mut out[pos..]));
+        shuffle.run(&mut out[pos..]);
         start = next;
     }
 }
@@ -69,7 +69,7 @@ proptest! {
         let mut scratch = Scratch::new();
         let marker = super::enc::bwt(&input, &mut scratch);
         let mut buf = vec![0; input.len()];
-        super::dec::bwt_inv(marker, cells(&mut buf[..]), &mut scratch);
+        super::dec::bwt_inv(marker, &mut buf[..], &mut scratch);
         prop_assert_eq!(input, buf);
     }
 
