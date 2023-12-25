@@ -1,0 +1,1 @@
+window.ALL_CRATES = ["sndjvu","sndjvu_codec","sndjvu_format","sndjvu_toolkit"];

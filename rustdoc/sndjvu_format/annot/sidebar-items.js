@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Annot","Border","HorizAlign","Mode","Scalar","Shape","VertAlign","Zoom"],"struct":["Color","Highlight","Key","KeyError","Link","Maparea","MarginStrings","Point","Quoted","QuotedScalars"]};

@@ -1,0 +1,321 @@
+<html>
+<body style="background-color:#f0f0f0;">
+<pre style="background-color:#f0f0f0;"><code><span style="display:flex;"><span><span style="color:#007020">#ifndef SNDJVU_H
+</span></span></span><span style="display:flex;"><span><span style="color:#007020">#define SNDJVU_H
+</span></span></span><span style="display:flex;"><span><span style="color:#007020"></span>
+</span></span><span style="display:flex;"><span><span style="color:#007020">#ifdef __cplusplus
+</span></span></span><span style="display:flex;"><span><span style="color:#007020"></span><span style="color:#007020;font-weight:bold">extern</span> <span style="color:#4070a0">&#34;C&#34;</span> {
+</span></span><span style="display:flex;"><span><span style="color:#007020">#endif
+</span></span></span><span style="display:flex;"><span><span style="color:#007020"></span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">typedef</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_doc sndjvu_doc;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">long</span> <span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_startdoc</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#902000">void</span> <span style="color:#666">*</span>buf, <span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> <span style="color:#902000">long</span> len, sndjvu_doc <span style="color:#666">**</span>out);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">void</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_untiedoc</span>(sndjvu_doc <span style="color:#666">*</span>doc);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">void</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_closedoc</span>(sndjvu_doc <span style="color:#666">*</span>doc);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_SINGLEPAGE <span style="color:#666">=</span> <span style="color:#40a070">1</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_MULTIPAGE
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_dockind</span>(sndjvu_doc <span style="color:#666">*</span>doc);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">typedef</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_page sndjvu_page;
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">typedef</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_multipage sndjvu_multipage;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">struct</span> sndjvu_info {
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">short</span> width;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">short</span> height;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">char</span> major_version;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">char</span> minor_version;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">short</span> dpi;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">char</span> gamma;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">char</span> flags;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_pageinfo</span>(sndjvu_page <span style="color:#666">*</span>page, <span style="color:#007020;font-weight:bold">struct</span> sndjvu_info <span style="color:#666">*</span>out);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">typedef</span> <span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> <span style="color:#902000">long</span> sndjvu_pos;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_isend</span>(sndjvu_pos pos);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">typedef</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_elem <span style="color:#666">*</span>sndjvu_elem;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">void</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_untieelem</span>(sndjvu_elem <span style="color:#666">*</span>elem);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">void</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_closeelem</span>(sndjvu_elem <span style="color:#666">*</span>elem);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>sndjvu_pos
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_nextelem</span>(sndjvu_elem <span style="color:#666">*</span>elem);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>sndjvu_pos
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_pageelems</span>(sndjvu_page <span style="color:#666">*</span>page);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">long</span> <span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_parseelem</span>(sndjvu_pos pos, <span style="color:#007020;font-weight:bold">const</span> <span style="color:#902000">void</span> <span style="color:#666">*</span>buf, <span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> <span style="color:#902000">long</span> len, sndjvu_elem <span style="color:#666">**</span>out);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_ANTA <span style="color:#666">=</span> <span style="color:#40a070">1</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ANTZ,
+</span></span><span style="display:flex;"><span>	SNDJVU_TXTA,
+</span></span><span style="display:flex;"><span>	SNDJVU_TXTZ,
+</span></span><span style="display:flex;"><span>	SNDJVU_DJBZ,
+</span></span><span style="display:flex;"><span>	SNDJVU_SJBZ,
+</span></span><span style="display:flex;"><span>	SNDJVU_FG44,
+</span></span><span style="display:flex;"><span>	SNDJVU_BG44,
+</span></span><span style="display:flex;"><span>	SNDJVU_FGBZ,
+</span></span><span style="display:flex;"><span>	SNDJVU_INCL,
+</span></span><span style="display:flex;"><span>	SNDJVU_BGJP,
+</span></span><span style="display:flex;"><span>	SNDJVU_FGJP,
+</span></span><span style="display:flex;"><span>	SNDJVU_SMMR
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_elemkind</span>(sndjvu_elem <span style="color:#666">*</span>elem);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">void</span> <span style="color:#666">*</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_elemdata</span>(sndjvu_elem <span style="color:#666">*</span>elem);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">unsigned</span> <span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_elemlen</span>(sndjvu_elem <span style="color:#666">*</span>elem);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">typedef</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_ant <span style="color:#666">*</span>sndjvu_ant;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>sndjvu_ant <span style="color:#666">*</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_startant</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#902000">void</span> <span style="color:#666">*</span>buf, <span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> <span style="color:#902000">long</span> len);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_nextant</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">void</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_closeant</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_ANTBACKGROUND <span style="color:#666">=</span> <span style="color:#40a070">1</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ANTZOOM,
+</span></span><span style="display:flex;"><span>	SNDJVU_ANTMODE,
+</span></span><span style="display:flex;"><span>	SNDJVU_ANTALIGN,
+</span></span><span style="display:flex;"><span>	SNDJVU_ANTMAPAREA,
+</span></span><span style="display:flex;"><span>	SNDJVU_ANTMETADATA,
+</span></span><span style="display:flex;"><span>	SNDJVU_ANTXMP
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_antkind</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">char</span> <span style="color:#666">*</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_antdata</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">void</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_unquote</span>(<span style="color:#902000">char</span> <span style="color:#666">*</span>quoted, <span style="color:#902000">char</span> <span style="color:#666">**</span>data_out, <span style="color:#902000">unsigned</span> <span style="color:#666">**</span>len_out);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_antbackground</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_ZOOMSTRETCH <span style="color:#666">=</span> <span style="color:#40a070">10000</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ZOOMONE2ONE,
+</span></span><span style="display:flex;"><span>	SNDJVU_ZOOMWIDTH,
+</span></span><span style="display:flex;"><span>	SNDJVU_ZOOMPAGE,
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_antzoom</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_MODECOLOR <span style="color:#666">=</span> <span style="color:#40a070">1</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_MODEBW,
+</span></span><span style="display:flex;"><span>	SNDJVU_MODEFORE,
+</span></span><span style="display:flex;"><span>	SNDJVU_MODEBLACK
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_antmode</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_ALIGNLEFT <span style="color:#666">=</span> <span style="color:#40a070">1</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ALIGNCENTERH <span style="color:#666">=</span> <span style="color:#40a070">2</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ALIGNRIGHT <span style="color:#666">=</span> <span style="color:#40a070">3</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ALIGNMASKH <span style="color:#666">=</span> <span style="color:#40a070">3</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ALIGNTOP <span style="color:#666">=</span> <span style="color:#40a070">1</span><span style="color:#666">&lt;&lt;</span><span style="color:#40a070">2</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ALIGNCENTERV <span style="color:#666">=</span> <span style="color:#40a070">2</span><span style="color:#666">&lt;&lt;</span><span style="color:#40a070">2</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ALIGNBOTTOM <span style="color:#666">=</span> <span style="color:#40a070">3</span><span style="color:#666">&lt;&lt;</span><span style="color:#40a070">2</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ALIGNMASKV <span style="color:#666">=</span> <span style="color:#40a070">3</span><span style="color:#666">&lt;&lt;</span><span style="color:#40a070">2</span>,
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_antalign</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">typedef</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_maparea sndjvu_maparea;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">char</span> <span style="color:#666">*</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_mapareaurl</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">char</span> <span style="color:#666">*</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_mapareatarget</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">char</span> <span style="color:#666">*</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_mapareacomment</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_SHAPERECT,
+</span></span><span style="display:flex;"><span>	SNDJVU_SHAPEOVAL,
+</span></span><span style="display:flex;"><span>	SNDJVU_SHAPETEXT,
+</span></span><span style="display:flex;"><span>	SNDJVU_SHAPEPOLY,
+</span></span><span style="display:flex;"><span>	SNDJVU_SHAPELINE
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_mapareashape</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">struct</span> sndjvu_point {
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> x;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> y;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">struct</span> sndjvu_box {
+</span></span><span style="display:flex;"><span>	<span style="color:#007020;font-weight:bold">struct</span> sndjvu_point origin;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> width;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> height;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_shapebox</span>(sndjvu_maparea <span style="color:#666">*</span>map, <span style="color:#007020;font-weight:bold">struct</span> sndjvu_box <span style="color:#666">*</span>out);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_borderavis</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">long</span> <span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_shapecolors</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">long</span> <span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_textcolors</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_textpushpin</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">struct</span> sndjvu_point <span style="color:#666">*</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_shapevertices</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_shapenumvertices</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_linearrow</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_linewidth</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_BORDERNONE,
+</span></span><span style="display:flex;"><span>	SNDJVU_BORDERXOR,
+</span></span><span style="display:flex;"><span>	SNDJVU_BORDERCOLOR,
+</span></span><span style="display:flex;"><span>	SNDJVU_BORDERSHADOWIN,
+</span></span><span style="display:flex;"><span>	SNDJVU_BORDERSHADOWOUT,
+</span></span><span style="display:flex;"><span>	SNDJVU_BORDERSHADOWEIN,
+</span></span><span style="display:flex;"><span>	SNDJVU_BORDERSHADOWEOUT,
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_borderkind</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_bordercolor</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_bordershadow</span>(sndjvu_maparea <span style="color:#666">*</span>map);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">struct</span> sndjvu_metadatakv {
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">char</span> <span style="color:#666">*</span>key;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">char</span> <span style="color:#666">*</span>value;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">struct</span> sndjvu_metadatakv <span style="color:#666">*</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_antmetadata</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_antmetadatalen</span>(sndjvu_ant <span style="color:#666">*</span>ant);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">struct</span> sndjvu_zone {
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">char</span> data[<span style="color:#40a070">17</span>];
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_ZONEPAGE <span style="color:#666">=</span> <span style="color:#40a070">1</span>,
+</span></span><span style="display:flex;"><span>	SNDJVU_ZONECOLUMN,
+</span></span><span style="display:flex;"><span>	SNDJVU_ZONEREGION,
+</span></span><span style="display:flex;"><span>	SNDJVU_ZONEPARAGRAPH,
+</span></span><span style="display:flex;"><span>	SNDJVU_ZONELINE,
+</span></span><span style="display:flex;"><span>	SNDJVU_ZONEWORD,
+</span></span><span style="display:flex;"><span>	SNDJVU_ZONECHARACTER
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_zonekind</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_zone <span style="color:#666">*</span>zone);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">short</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_zonexoffset</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_zone <span style="color:#666">*</span>zone);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">short</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_zoneyoffset</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_zone <span style="color:#666">*</span>zone);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">short</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_zonewidth</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_zone <span style="color:#666">*</span>zone);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">short</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_zoneheight</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_zone <span style="color:#666">*</span>zone);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">unsigned</span> <span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_zonetextlen</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_zone <span style="color:#666">*</span>zone);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">unsigned</span> <span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_zonenumchildren</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_zone <span style="color:#666">*</span>zone);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">struct</span> sndjvu_txt {
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">char</span> <span style="color:#666">*</span>text;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> text_len;
+</span></span><span style="display:flex;"><span>	<span style="color:#007020;font-weight:bold">struct</span> sndjvu_zone <span style="color:#666">*</span>zones;
+</span></span><span style="display:flex;"><span>	<span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> zones_len;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_parsetxt</span>(<span style="color:#007020;font-weight:bold">const</span> <span style="color:#902000">void</span> <span style="color:#666">*</span>buf, <span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> <span style="color:#902000">long</span> len, <span style="color:#007020;font-weight:bold">struct</span> sndjvu_txt <span style="color:#666">*</span>out);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>sndjvu_pos
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_multipagecomponents</span>(sndjvu_multipage <span style="color:#666">*</span>multipage);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">typedef</span> <span style="color:#007020;font-weight:bold">struct</span> sndjvu_component sndjvu_component;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">long</span> <span style="color:#902000">long</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_parsecomponent</span>(sndjvu_pos pos, <span style="color:#007020;font-weight:bold">const</span> <span style="color:#902000">void</span> <span style="color:#666">*</span>buf, <span style="color:#902000">unsigned</span> <span style="color:#902000">long</span> <span style="color:#902000">long</span> len, sndjvu_component <span style="color:#666">**</span>out);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">enum</span> {
+</span></span><span style="display:flex;"><span>	SNDJVU_DJVI,
+</span></span><span style="display:flex;"><span>	SNDJVU_DJVU,
+</span></span><span style="display:flex;"><span>	SNDJVU_THUM
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#902000">int</span>
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_componentkind</span>(sndjvu_component <span style="color:#666">*</span>component);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>sndjvu_pos
+</span></span><span style="display:flex;"><span><span style="color:#06287e">sndjvu_componentbody</span>(sndjvu_component <span style="color:#666">*</span>component);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020">#ifdef __cplusplus
+</span></span></span><span style="display:flex;"><span><span style="color:#007020"></span>} <span style="color:#60a0b0;font-style:italic">/* extern &#34;C&#34; */</span>
+</span></span><span style="display:flex;"><span><span style="color:#007020">#endif
+</span></span></span><span style="display:flex;"><span><span style="color:#007020"></span>
+</span></span><span style="display:flex;"><span><span style="color:#007020">#endif </span><span style="color:#60a0b0;font-style:italic">/* SNDJVU_H */</span><span style="color:#007020">
+</span></span></span></code></pre>
+</body>
+</html>

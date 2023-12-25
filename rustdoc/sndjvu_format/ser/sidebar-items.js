@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["SerializeMultiPageBundled"],"fn":["to_vec","to_writer"],"struct":["AnnotBuf","BookmarkBuf","Error","Okay","SerializeBg44Chunks","SerializeComponents","SerializeElements","SerializeMultiPageHead","SerializeThumbnails","Serializer","TxtBuf","ZoneBuf"],"trait":["Serialize"]};
