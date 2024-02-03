@@ -1142,38 +1142,69 @@ impl ZoneBuf {
 ///
 /// Calls to [`Self::start_bookmark`] and [`Self::end_bookmark`] must be balanced, and their nesting
 /// determines the tree structure of the bookmarks in the natural way.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct BookmarkBuf {
+    strategy: BookmarkStrategy,
     raw: Vec<u8>,
     count: u16,
-    stack: Vec<(usize, u8)>,
+    stack: Vec<(usize, u16)>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum BookmarkStrategy {
+    Compatible,
+    Incompatible,
 }
 
 impl BookmarkBuf {
-    pub fn new() -> Self {
-        Self { raw: alloc::vec![0, 0], count: 0, stack: Vec::new() }
+    pub fn new_compatible() -> Self {
+        Self { strategy: BookmarkStrategy::Compatible, raw: alloc::vec![0, 0], count: 0, stack: Vec::new() }
+    }
+
+    pub fn new_incompatible() -> Self {
+        Self { strategy: BookmarkStrategy::Incompatible, raw: alloc::vec![0, 0], count: 0, stack: Vec::new() }
     }
 
     pub fn start_bookmark(&mut self, description: &str, url: &str) -> Result<&mut Self, Error> {
-        let description_len: U24 = description.len().try_into()?;
-        let url_len: U24 = url.len().try_into()?;
-        self.count = self.count.checked_add(1).ok_or(OverflowError)?;
-        self.raw[0..2].copy_from_slice(&self.count.to_be_bytes());
-        if let Some(&mut (_, ref mut n)) = self.stack.last_mut() {
-            *n = (*n).checked_add(1).ok_or(OverflowError)?;
+        match self.strategy {
+            BookmarkStrategy::Compatible => {
+                let description_len: u16 = description.len().try_into().map_err(|_| OverflowError)?;
+                let description_len = U24(description_len as u32);
+                let url_len: U24 = url.len().try_into()?;
+                self.count = self.count.checked_add(1).ok_or(OverflowError)?;
+                self.raw[0..2].copy_from_slice(&self.count.to_be_bytes());
+                if let Some(&mut (_, ref mut n)) = self.stack.last_mut() {
+                    *n = (*n).checked_add(1).ok_or(OverflowError)?;
+                }
+                self.stack.push((self.raw.len(), 0));
+                self.raw.push(0); // fixed up later
+                self.raw.extend_from_slice(&description_len.to_be_bytes());
+                self.raw.extend_from_slice(description.as_bytes());
+                self.raw.extend_from_slice(&url_len.to_be_bytes());
+                self.raw.extend_from_slice(url.as_bytes());
+            }
+            BookmarkStrategy::Incompatible => {
+                let description_len: u16 = description.len().try_into().map_err(|_| OverflowError)?;
+                let url_len: U24 = url.len().try_into()?;
+                self.count = self.count.checked_add(1).ok_or(OverflowError)?;
+                self.raw[0..2].copy_from_slice(&self.count.to_be_bytes());
+                if let Some(&mut (_, ref mut n)) = self.stack.last_mut() {
+                    *n = (*n).checked_add(1).ok_or(OverflowError)?;
+                }
+                self.stack.push((self.raw.len(), 0));
+                self.raw.extend_from_slice(&[0, 0]); // fixed up later
+                self.raw.extend_from_slice(&description_len.to_be_bytes());
+                self.raw.extend_from_slice(description.as_bytes());
+                self.raw.extend_from_slice(&url_len.to_be_bytes());
+                self.raw.extend_from_slice(url.as_bytes());
+            }
         }
-        self.stack.push((self.raw.len(), 0));
-        self.raw.push(0); // fixed up later
-        self.raw.extend_from_slice(&description_len.to_be_bytes());
-        self.raw.extend_from_slice(description.as_bytes());
-        self.raw.extend_from_slice(&url_len.to_be_bytes());
-        self.raw.extend_from_slice(url.as_bytes());
         Ok(self)
     }
 
     pub fn end_bookmark(&mut self) -> &mut Self {
         let (i, n) = self.stack.pop().unwrap();
-        self.raw[i] = n;
+        self.raw[i..i + 2].copy_from_slice(&n.to_le_bytes());
         self
     }
 
