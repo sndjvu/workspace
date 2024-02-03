@@ -141,15 +141,8 @@ pub fn document(data: &[u8]) -> Result<Progress<DocumentHead<'_>>, Error> {
         b"DJVM" => {
             let content = try_advance!(s.specific_chunk(b"DIRM")?);
             let dirm = RawDirm { content, end_pos };
-            let kind = try_advance!(s.peek_chunk()?);
-            let navm = if &kind == b"NAVM" {
-                let content = try_advance!(s.specific_chunk(b"NAVM")?);
-                Some(RawNavm { content })
-            } else {
-                None
-            };
-            let components = ComponentP::new(s.pos(), end_pos);
-            DocumentHead::MultiPage { dirm, navm, components }
+            let navm = NavmP::new(s.pos(), end_pos);
+            DocumentHead::MultiPage { dirm, navm }
         }
         _ => return Err(Error::placeholder()),
     };
@@ -165,6 +158,39 @@ pub fn indirect_component(data: &[u8]) -> Result<Progress<ComponentHead<'_>>, Er
     Ok(advanced(head, s))
 }
 
+#[derive(Debug)]
+pub struct NavmP {
+    pos: Pos,
+    end_pos: Pos,
+}
+
+impl NavmP {
+    fn new(pos: Pos, end_pos: Pos) -> Self {
+        Self { pos, end_pos }
+    }
+
+    pub fn feed<'a>(&self, buf: &'a [u8]) -> Result<Progress<(Option<RawNavm<'a>>, ComponentP)>, Error> {
+        if self.pos == self.end_pos {
+            return Ok(Progress::Advanced { head: (None, ComponentP::new(self.pos, self.end_pos)), by: 0 })
+        }
+        let mut s = split_outer(buf, self.pos, Some(self.end_pos));
+        let s = &mut s;
+        let progress = match s.peek_chunk()? {
+            ProgressInternal::None(hint) => Progress::None { hint },
+            ProgressInternal::Advanced(kind) if &kind == b"NAVM" => {
+                let (_, content) = try_advance!(s.chunk()?);
+                let navm = RawNavm { content };
+                let components = ComponentP::new(s.pos(), self.end_pos);
+                advanced((Some(navm), components), s)
+            }
+            ProgressInternal::Advanced(_) => {
+                let components = ComponentP::new(s.pos(), self.end_pos);
+                advanced((None, components), s)
+            }
+        };
+        Ok(progress)
+    }
+}
 
 /// Parsed representation of the start of a document.
 #[derive(Debug)]
@@ -175,8 +201,7 @@ pub enum DocumentHead<'a> {
     },
     MultiPage {
         dirm: RawDirm<'a>,
-        navm: Option<RawNavm<'a>>,
-        components: ComponentP,
+        navm: NavmP,
     },
 }
 
@@ -936,19 +961,30 @@ pub struct DecodedNavm<'a> {
     body: Field<'a>,
 }
 
+#[derive(Debug)]
+enum BookmarkFormat {
+    Strict,
+    Novel,
+}
+
 impl<'a> DecodedNavm<'a> {
     pub fn num_bookmarks(&self) -> u16 {
         self.num_bookmarks
     }
 
-    pub fn parsing(&self) -> ParsingBookmarks<'a> {
-        ParsingBookmarks { remaining: self.num_bookmarks, s: self.body.split() }
+    pub fn parsing_strict(&self) -> ParsingBookmarks<'a> {
+        ParsingBookmarks { format: BookmarkFormat::Strict, remaining: self.num_bookmarks, s: self.body.split() }
+    }
+
+    pub fn parsing_novel(&self) -> ParsingBookmarks<'a> {
+        ParsingBookmarks { format: BookmarkFormat::Novel, remaining: self.num_bookmarks, s: self.body.split() }
     }
 }
 
 /// Fallible iterator for parsing the bookmarks from a decompressed `NAVM` chunk.
 #[derive(Debug)]
 pub struct ParsingBookmarks<'a> {
+    format: BookmarkFormat,
     remaining: u16,
     s: SplitInner<'a>,
 }
@@ -959,16 +995,25 @@ impl<'a> ParsingBookmarks<'a> {
             return Ok(None);
         }
         self.remaining -= 1;
-        let num_children = self.s.byte()?;
-        let description_len = self.s.u24_be()?;
-        let description = self.s.slice(description_len as usize)?;
-        let url_len = self.s.u24_be()?;
-        let url = self.s.slice(url_len as usize)?;
-        Ok(Some(Bookmark {
-            num_children,
-            description,
-            url,
-        }))
+        let mark = match self.format {
+            BookmarkFormat::Strict => {
+                let num_children = self.s.byte()? as u16;
+                let description_len = self.s.u24_be()?;
+                let description = self.s.slice(description_len as usize)?;
+                let url_len = self.s.u24_be()?;
+                let url = self.s.slice(url_len as usize)?;
+                Bookmark { num_children, description, url }
+            }
+            BookmarkFormat::Novel => {
+                let num_children = self.s.u16_le()?;
+                let description_len= self.s.u16_be()?;
+                let description = self.s.slice(description_len as usize)?;
+                let url_len = self.s.u24_be()?;
+                let url = self.s.slice(url_len as usize)?;
+                Bookmark { num_children, description, url }
+            }
+        };
+        Ok(Some(mark))
     }
 
     pub fn expected_len(&self) -> u16 {
@@ -979,7 +1024,7 @@ impl<'a> ParsingBookmarks<'a> {
 /// A single bookmark record from the (decompressed) `NAVM` chunk.
 #[derive(Clone)]
 pub struct Bookmark<'a> {
-    pub num_children: u8,
+    pub num_children: u16,
     pub description: &'a [u8],
     pub url: &'a [u8],
 }
